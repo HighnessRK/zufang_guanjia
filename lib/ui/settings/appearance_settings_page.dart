@@ -18,6 +18,7 @@ class _AppearanceSettingsPageState extends State<AppearanceSettingsPage> {
     final MiuixColors c = MiuixTheme.of(context).colors;
     final AppConfig cfg = AppConfig.instance;
     final bool premium = cfg.premiumMaterial;
+    final bool predictive = cfg.predictiveBack;
 
     return AuroraScaffold(
       topBar: MiuixSmallTopAppBar(
@@ -55,6 +56,31 @@ class _AppearanceSettingsPageState extends State<AppearanceSettingsPage> {
             MiuixText(
               '开启：整页极光渐变背景 + 液态玻璃卡片与顶栏，光影随内容流动；\n'
               '关闭：纯色背景 + 高斯模糊磨砂卡片，更省电、更保守。',
+              fontSize: 12,
+              height: 1.6,
+              color: c.onSurfaceVariantSummary,
+            ),
+            const SizedBox(height: 24),
+            const SectionTitle('手势'),
+            GlassCard(
+              padding: const EdgeInsets.symmetric(vertical: 4),
+              borderRadius: 20,
+              child: MiuixSwitchPreference(
+                title: '预测手势返回',
+                summary: predictive
+                    ? '边缘侧滑跟手返回动画'
+                    : '关闭时使用系统经典返回（默认）',
+                value: predictive,
+                onChanged: (bool v) async {
+                  await cfg.update(predictiveBack: v);
+                  _refresh();
+                },
+              ),
+            ),
+            const SizedBox(height: 16),
+            MiuixText(
+              '开启后从屏幕边缘侧滑返回时，页面随手指 1:1 跟手滑出；\n'
+              '关闭则使用系统默认返回效果（更省电、更保守）。',
               fontSize: 12,
               height: 1.6,
               color: c.onSurfaceVariantSummary,

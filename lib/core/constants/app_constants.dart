@@ -5,8 +5,8 @@ class AppConstants {
 
   //========================= 应用信息 =========================
   static const String appName = '租房管家';
-  static const String appVersion = '1.0.0';
-  static const String appBuild = '2';
+  static const String appVersion = '1.0.2';
+  static const String appBuild = '4';
 
   /// ====== 应用内更新：Release 仓库（GitHub / Gitee 同名公开仓库）======
   static const String updateRepoName = 'zufang_guanjia';
@@ -49,6 +49,9 @@ class AppConstants {
   /// 通知渠道：Android 16 Live Update（收款进度芯片）
   static const String channelLive = 'live_notice_v1';
 
+  /// 通知渠道：应用内更新下载进度
+  static const String channelDownload = 'download_notice';
+
   /// 原生桥接 MethodChannel 名称
   static const String nativeChannel = 'com.zufang.guanjia/native';
 
@@ -57,6 +60,7 @@ class AppConstants {
   static const int notifyIdUtility = 1002;
   static const int notifyIdExpire = 1003;
   static const int notifyIdFocus = 1099;
+  static const int notifyIdUpdate = 1200;
 
   /// 实验室 Beta：手动触发的超级岛（焦点通知）测试通知
   static const int notifyIdFocusTest = 1100;

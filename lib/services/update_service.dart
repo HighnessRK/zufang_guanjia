@@ -7,19 +7,26 @@ import '../core/config/app_config.dart';
 import '../core/constants/app_constants.dart';
 import 'native_bridge.dart';
 
+/// 剥掉版本号前导的 'v' / 'V'（Release tag 常带，展示层统一再补 'v'）
+String _stripVersionPrefix(String v) {
+  if (v.startsWith('v') || v.startsWith('V')) return v.substring(1);
+  return v;
+}
+
 /// 远端最新版本信息（GitHub / Gitee Release 解析结果）
 class UpdateInfo {
   UpdateInfo({
-    required this.version,
+    required String version,
     required this.tag,
     required this.notes,
     required this.source,
     this.apkUrl,
     this.apkSize,
     this.pageUrl = '',
-  });
+    this.date = '',
+  }) : version = _stripVersionPrefix(version);
 
-  /// 语义化版本号（可能带 v 前缀，比较前会剥掉）
+  /// 语义化版本号（构造时已剥掉 v 前缀，如 "1.0.2"；展示时统一补 'v'）
   final String version;
 
   /// Release tag（如 v1.0.0）
@@ -39,6 +46,17 @@ class UpdateInfo {
 
   /// Release 页面地址（直链不可用时兜底跳转浏览器）
   final String pageUrl;
+
+  /// 发布日期 yyyy-MM-dd
+  final String date;
+}
+
+/// 解析后的更新内容条目（type: 新增/优化/修复，可为空）
+class UpdateNoteEntry {
+  const UpdateNoteEntry(this.type, this.text);
+
+  final String type;
+  final String text;
 }
 
 /// 应用内更新服务：检查 GitHub / Gitee 最新 Release、下载 APK、调起系统安装。
@@ -80,6 +98,48 @@ class UpdateService {
     }
   }
 
+  /// ISO 时间戳 → yyyy-MM-dd（失败返回空串）
+  static String _dateOf(dynamic v) {
+    final String s = (v ?? '').toString();
+    if (s.length >= 10) return s.substring(0, 10);
+    return '';
+  }
+
+  /// 解析 Release 说明正文为条目列表。
+  /// 剥掉 markdown 标题符号 / 分隔线 / 安装包体积等噪声，
+  /// 识别「新增 / 优化 / 修复」前缀并归类（识别不到则 type 为空）。
+  static List<UpdateNoteEntry> parseUpdateNotes(String notes) {
+    final List<UpdateNoteEntry> out = <UpdateNoteEntry>[];
+    for (String raw in notes.split('\n')) {
+      String line = raw.trim();
+      if (line.isEmpty) continue;
+      // 跳过分隔线
+      if (RegExp(r'^[-*_=\s]{3,}$').hasMatch(line)) continue;
+      // 跳过安装包体积行
+      if (line.contains('.apk') || line.contains('Android 7')) continue;
+      // 去掉标题符号
+      line = line.replaceFirst(RegExp(r'^#{1,6}\s*'), '');
+      // 去掉列表符号
+      line = line.replaceFirst(RegExp(r'^[-*+•]\s*'), '');
+      if (line.trim().isEmpty) continue;
+      String type = '';
+      for (final String t in <String>['新增', '优化', '修复', '安全']) {
+        if (line.startsWith(t)) {
+          type = t;
+          line = line.substring(t.length).trim();
+          // 剥掉「：」
+          if (line.startsWith('：') || line.startsWith(':')) {
+            line = line.substring(1).trim();
+          }
+          break;
+        }
+      }
+      if (line.trim().isEmpty) continue;
+      out.add(UpdateNoteEntry(type, line.trim()));
+    }
+    return out;
+  }
+
   /// GitHub：GET /repos/{owner}/{repo}/releases/latest
   static Future<UpdateInfo?> _checkGitHub() async {
     final Uri uri = Uri.parse(
@@ -108,6 +168,7 @@ class UpdateService {
         apkUrl: _pickApkUrl(assets),
         apkSize: _pickApkSize(assets),
         pageUrl: (json['html_url'] ?? '') as String,
+        date: _dateOf(json['published_at'] ?? json['created_at']),
       );
     } finally {
       client.close(force: true);
@@ -154,6 +215,7 @@ class UpdateService {
         apkUrl: _pickApkUrl(assets),
         apkSize: _pickApkSize(assets),
         pageUrl: (best['html_url'] ?? '') as String,
+        date: _dateOf(best['published_at'] ?? best['created_at']),
       );
     } finally {
       client.close(force: true);

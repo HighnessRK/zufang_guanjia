@@ -178,6 +178,11 @@ class MainActivity : FlutterActivity() {
                         channelId
                     }
 
+                    // 仅下载渠道渲染进度条（其余通知 progress 恒为 0，
+                    // 直传会把每条普通提醒画成 0% 进度条 → 传 -1 表示无进度）
+                    val postProgress =
+                        if (channel == NotificationHelper.CHANNEL_DOWNLOAD) progress else -1
+
                     NotificationHelper.post(
                         context = this,
                         id = id,
@@ -185,7 +190,9 @@ class MainActivity : FlutterActivity() {
                         title = title,
                         body = body,
                         bigText = bigText,
-                        ongoing = ongoing
+                        ongoing = ongoing,
+                        progress = postProgress,
+                        progressMax = progressMax
                     )
                     result.success(null)
                 }

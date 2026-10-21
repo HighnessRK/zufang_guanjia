@@ -148,6 +148,38 @@ class NotificationService {
     );
   }
 
+  //==================== 应用内更新下载通知 ====================
+
+  /// 下载新版本中：常驻进度通知（通知栏与弹窗同步显示百分比）
+  static Future<void> showUpdateProgress(String version, int percent) {
+    return NativeBridge.showNotification(
+      id: AppConstants.notifyIdUpdate,
+      channelId: AppConstants.channelDownload,
+      title: '正在下载 租房管家 v$version',
+      body: '$percent%',
+      progress: percent,
+      progressMax: 100,
+      ongoing: true,
+    );
+  }
+
+  /// 下载完成：通知栏提示已就绪（点击拉起应用后即可安装）
+  static Future<void> showUpdateDone(String version) {
+    return NativeBridge.showNotification(
+      id: AppConstants.notifyIdUpdate,
+      channelId: AppConstants.channelDownload,
+      title: '租房管家 v$version 已下载完成',
+      body: '点击通知回到应用，点击「安装」完成升级',
+      bigText: '新版本 v$version 已下载到本地。\n'
+          '回到应用后在更新弹窗中点击「安装」即可完成升级。',
+    );
+  }
+
+  /// 取消 / 清除更新下载通知
+  static Future<void> cancelUpdateNotification() {
+    return NativeBridge.cancelNotification(AppConstants.notifyIdUpdate);
+  }
+
   /// 内置通知中心标记已读
   Future<void> markRead(NoticeItem item) async {
     await AppConfig.instance.markNoticeRead(item.id);

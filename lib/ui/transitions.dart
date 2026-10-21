@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart' show PredictiveBackEvent;
 
+import '../core/config/app_config.dart';
+
 /// 页面转场路由（全流程统一使用）：HyperOS / Material 式「横向滑入」。
 ///
 /// * **入场**：新页面自右侧整屏滑入（100%→0），旧页保持原位完全静止、
@@ -152,6 +154,9 @@ class _AppBackGestureDetectorState extends State<_AppBackGestureDetector>
   bool handleStartBackGesture(PredictiveBackEvent backEvent) {
     // 按钮式返回交给常规 back 链路；非顶层 / 不可弹时同样放行
     if (backEvent.isButtonEvent || !_enabled) return false;
+    // 「预测手势返回」开关关闭（默认）→ 不认领边缘手势，交回系统走
+    // 经典返回（无 1:1 跟手动画）
+    if (!AppConfig.instance.predictiveBack) return false;
     widget.route.handleStartBackGesture(progress: 1 - backEvent.progress);
     // 认领成功 → 后续转场值改走 1:1 线性映射（跟手）
     widget.route.beginGestureDrive();

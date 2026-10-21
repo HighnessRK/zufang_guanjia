@@ -28,6 +28,17 @@ class AppChangelog {
 
   /// 全部版本（倒序：最新在最前）
   static const List<ChangelogVersion> versions = <ChangelogVersion>[
+    ChangelogVersion('1.0.2', '2026-10-21', <ChangelogEntry>[
+      ChangelogEntry('优化', '「关于」页应用图标与桌面启动图标保持一致（深蓝底白色房子）'),
+      ChangelogEntry('优化', '更新弹窗适配深色模式，更新内容去除 Markdown 符号并按「新增 / 优化 / 修复」彩色标签展示'),
+      ChangelogEntry('优化', '更新下载体验：弹窗内显示进度条与百分比，下载完成后出现「安装」按钮，通知栏同步进度'),
+      ChangelogEntry('新增', '设置 · 外观新增「预测手势返回」开关（默认关闭）'),
+      ChangelogEntry('优化', '更新日志直接在「关于」页展示，无需进入二级页面'),
+      ChangelogEntry('优化', '更新提醒文案精简'),
+    ]),
+    ChangelogVersion('1.0.1', '2026-10-21', <ChangelogEntry>[
+      ChangelogEntry('优化', '「关于」页应用图标与桌面启动图标保持一致（深蓝底白色房子）'),
+    ]),
     ChangelogVersion('1.0.0', '2026-10-21', <ChangelogEntry>[
       ChangelogEntry('新增', '极光渐变主题与液态玻璃高级材质（可切换高斯模糊）'),
       ChangelogEntry('新增', '悬浮液态玻璃底部导航（大狗记风格紧凑胶囊）'),

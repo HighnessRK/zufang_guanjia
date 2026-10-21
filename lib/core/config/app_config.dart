@@ -143,6 +143,10 @@ class AppConfig extends ChangeNotifier {
   /// 上次自动提醒过的版本号（同一版本只自动提醒一次）
   String updatePromptedVersion = '';
 
+  /// 预测式返回手势（边缘侧滑跟手返回）。默认关闭。
+  /// 关闭时不认领边缘手势 → 走系统经典返回，无跟手动画。
+  bool predictiveBack = false;
+
   //========================= 路径 ============================
 
   /// info.gwt 实际读写路径
@@ -222,6 +226,7 @@ class AppConfig extends ChangeNotifier {
     autoCheckUpdate = map['auto_check_update'] != '0';
     updateNotify = map['update_notify'] != '0';
     updatePromptedVersion = map['update_prompted_version'] ?? '';
+    predictiveBack = map['predictive_back'] == '1';
 
     // 数据合法性兜底：单价与天数不允许为负
     if (waterPrice < 0) waterPrice = 6.0;
@@ -298,6 +303,7 @@ class AppConfig extends ChangeNotifier {
       ..writeln('auto_check_update=${autoCheckUpdate ? 1 : 0}')
       ..writeln('update_notify=${updateNotify ? 1 : 0}')
       ..writeln('update_prompted_version=$updatePromptedVersion')
+      ..writeln('predictive_back=${predictiveBack ? 1 : 0}')
       ..writeln()
       ..writeln('#—— 运行期数据 ———')
       ..writeln('notice_read_ids=$noticeReadIds');
@@ -331,6 +337,7 @@ class AppConfig extends ChangeNotifier {
     bool? autoCheckUpdate,
     bool? updateNotify,
     String? updatePromptedVersion,
+    bool? predictiveBack,
   }) async {
     this.waterPrice = waterPrice ?? this.waterPrice;
     this.elecPrice = elecPrice ?? this.elecPrice;
@@ -356,6 +363,7 @@ class AppConfig extends ChangeNotifier {
     this.updateNotify = updateNotify ?? this.updateNotify;
     this.updatePromptedVersion =
         updatePromptedVersion ?? this.updatePromptedVersion;
+    this.predictiveBack = predictiveBack ?? this.predictiveBack;
     await save();
   }
 

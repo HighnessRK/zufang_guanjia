@@ -89,7 +89,7 @@ class _UpdateSettingsPageState extends State<UpdateSettingsPage> {
                       MiuixBasicComponent(
                         title: '更新提醒',
                         summary: cfg.autoCheckUpdate
-                            ? '发现新版本时弹窗提醒（每版本一次）'
+                            ? '发现新版本时弹窗提醒'
                             : '开启自动检查更新后生效',
                         enabled: cfg.autoCheckUpdate,
                         onClick: cfg.autoCheckUpdate

@@ -5,7 +5,6 @@ import '../../core/config/app_config.dart';
 import '../../core/constants/app_constants.dart';
 import '../../services/native_bridge.dart';
 import '../../services/update_service.dart';
-import '../transitions.dart';
 import '../widgets/app_widgets.dart';
 import '../widgets/update_dialog.dart';
 import 'changelog_page.dart';
@@ -85,11 +84,13 @@ class _AboutPageState extends State<AboutPage> {
                 width: 88,
                 height: 88,
                 decoration: BoxDecoration(
-                  color: c.primary.withValues(alpha: 0.14),
-                  borderRadius: BorderRadius.circular(26),
+                  // 与桌面启动图标一致：深蓝底 + 白色房子（自适应图标安全区）
+                  color: const Color(0xFF0F5CB4),
+                  borderRadius: BorderRadius.circular(24),
                 ),
-                child:
-                    Icon(Icons.home_work_rounded, size: 46, color: c.primary),
+                child: const CustomPaint(
+                  painter: _LauncherHousePainter(),
+                ),
               ),
             ),
             const SizedBox(height: 14),
@@ -128,6 +129,7 @@ class _AboutPageState extends State<AboutPage> {
               borderRadius: 20,
               child: Column(
                 children: <Widget>[
+                  const MiuixHorizontalDivider(),
                   MiuixBasicComponent(
                     title: '检查更新',
                     summary: _checking
@@ -149,25 +151,11 @@ class _AboutPageState extends State<AboutPage> {
                         ),
                     ],
                   ),
-                  const MiuixHorizontalDivider(),
-                  MiuixBasicComponent(
-                    title: '更新日志',
-                    summary: '版本历史与新功能一览',
-                    onClick: () => Navigator.of(context).push(
-                      AppPageRoute<void>(
-                          builder: (_) => const ChangelogPage()),
-                    ),
-                    endActions: <Widget>[
-                      MiuixIcon(
-                        icon: Icons.arrow_forward_ios_rounded,
-                        size: 14,
-                        tint: c.onSurfaceVariantSummary,
-                      ),
-                    ],
-                  ),
                 ],
               ),
             ),
+            const SectionTitle('更新日志'),
+            const ChangelogSection(),
             const SectionTitle('运行环境'),
             GlassCard(
               borderRadius: 20,
@@ -199,4 +187,65 @@ class _AboutPageState extends State<AboutPage> {
       },
     );
   }
+}
+
+/// 与桌面启动图标一致的白色房子（深蓝底在容器上绘制）。
+/// 居中绘制：三角屋顶 + 屋身 + 门，缩放适配 88×88 安全区。
+class _LauncherHousePainter extends CustomPainter {
+  const _LauncherHousePainter();
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final double w = size.width;
+    final double h = size.height;
+
+    // 屋身宽度 / 高度，屋顶三角略宽于屋身
+    final double bodyW = w * 0.42;
+    final double bodyH = h * 0.30;
+    final double cx = w / 2;
+    final double bodyTop = h * 0.46;
+    final double bodyBottom = bodyTop + bodyH;
+
+    final Paint paint = Paint()
+      ..color = const Color(0xFFFFFFFF)
+      ..style = PaintingStyle.fill;
+
+    // 屋身
+    final Rect body = Rect.fromCenter(
+      center: Offset(cx, (bodyTop + bodyBottom) / 2),
+      width: bodyW,
+      height: bodyH,
+    );
+    canvas.drawRRect(
+      RRect.fromRectAndRadius(body, Radius.circular(w * 0.03)),
+      paint,
+    );
+
+    // 屋顶（三角形，顶点在屋身中轴上方）
+    final double roofW = bodyW * 1.34;
+    final double roofTop = bodyTop - h * 0.20;
+    final Path roof = Path()
+      ..moveTo(cx, roofTop)
+      ..lineTo(cx + roofW / 2, bodyTop + h * 0.01)
+      ..lineTo(cx - roofW / 2, bodyTop + h * 0.01)
+      ..close();
+    canvas.drawPath(roof, paint);
+
+    // 门（镂空用底色）
+    final Paint doorPaint = Paint()
+      ..color = const Color(0xFF0F5CB4)
+      ..style = PaintingStyle.fill;
+    final Rect door = Rect.fromCenter(
+      center: Offset(cx, bodyBottom - bodyH * 0.28),
+      width: bodyW * 0.30,
+      height: bodyH * 0.56,
+    );
+    canvas.drawRRect(
+      RRect.fromRectAndRadius(door, Radius.circular(w * 0.02)),
+      doorPaint,
+    );
+  }
+
+  @override
+  bool shouldRepaint(covariant _LauncherHousePainter oldDelegate) => false;
 }

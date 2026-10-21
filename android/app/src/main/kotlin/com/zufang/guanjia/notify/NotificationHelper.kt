@@ -32,6 +32,7 @@ object NotificationHelper {
     const val CHANNEL_UTILITY = "utility_remind"
     const val CHANNEL_FOCUS = "focus_notice_v2"
     const val CHANNEL_LIVE = "live_notice_v1"
+    const val CHANNEL_DOWNLOAD = "download_notice"
 
     //==================== Live Updates 状态 ====================
     private const val TAG = "LiveUpdate"
@@ -101,6 +102,20 @@ object NotificationHelper {
                 enableVibration(false)
                 setShowBadge(false)
                 lockscreenVisibility = Notification.VISIBILITY_PUBLIC
+            },
+
+            // 应用内更新下载：低优先级、静音、常驻进度条（百分比频繁刷新，
+            // 不能发声/震动打扰），下载完成后转为可点击的普通通知
+            NotificationChannel(
+                CHANNEL_DOWNLOAD,
+                "更新下载",
+                NotificationManager.IMPORTANCE_LOW
+            ).apply {
+                description = "新版本下载进度与下载完成提示"
+                setSound(null, null)
+                enableVibration(false)
+                setShowBadge(false)
+                lockscreenVisibility = Notification.VISIBILITY_PUBLIC
             }
         )
 
@@ -115,6 +130,8 @@ object NotificationHelper {
      * @param body      正文（折叠态）
      * @param bigText   展开后的大文本，可为空
      * @param ongoing   是否常驻（不可滑动删除）
+     * @param progress  进度值（>=0 时渲染水平进度条）；传 -1 表示不显示进度
+     * @param progressMax 进度最大值
      */
     fun build(
         context: Context,
@@ -122,7 +139,9 @@ object NotificationHelper {
         title: String,
         body: String,
         bigText: String?,
-        ongoing: Boolean
+        ongoing: Boolean,
+        progress: Int = -1,
+        progressMax: Int = 100
     ): Notification {
         ensureChannels(context)
 
@@ -139,6 +158,12 @@ object NotificationHelper {
             .setOngoing(ongoing)
             .setShowWhen(true)
             .setWhen(System.currentTimeMillis())
+
+        // 下载等需要实时进度的场景：渲染水平进度条（传了有效 progress 才画）
+        if (progress in 0..progressMax) {
+            builder.setProgress(progressMax, progress, false)
+            // 进度通知点击回 APP（已在下方统一设置 contentIntent）
+        }
 
         if (ongoing) {
             builder.setCategory(NotificationCompat.CATEGORY_REMINDER)
@@ -182,6 +207,8 @@ object NotificationHelper {
 
     /**
      * 发送一条通知
+     *
+     * @param progress  进度值（>=0 时渲染进度条）；-1 表示无进度条
      */
     fun post(
         context: Context,
@@ -190,11 +217,14 @@ object NotificationHelper {
         title: String,
         body: String,
         bigText: String?,
-        ongoing: Boolean
+        ongoing: Boolean,
+        progress: Int = -1,
+        progressMax: Int = 100
     ) {
         val manager =
             context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
-        val notification = build(context, channelId, title, body, bigText, ongoing)
+        val notification =
+            build(context, channelId, title, body, bigText, ongoing, progress, progressMax)
         if (notification.extras.containsKey("miui.focus.param")) {
             // 带焦点参数 → 后台线程走 XMSF 校验通道（220ms 窗口后恢复规则），
             // 校验门不可用或任何失败都会自动降级为普通发送
