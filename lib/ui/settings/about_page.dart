@@ -129,7 +129,6 @@ class _AboutPageState extends State<AboutPage> {
               borderRadius: 20,
               child: Column(
                 children: <Widget>[
-                  const MiuixHorizontalDivider(),
                   MiuixBasicComponent(
                     title: '检查更新',
                     summary: _checking

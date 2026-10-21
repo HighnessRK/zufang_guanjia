@@ -162,16 +162,10 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
         // 返回键 / 预测式返回手势未被页面转场认领时 → handlePopRoute →
         // didPopRoute（下方实现）→ 先弹当前 Tab 的二级页，根页面再交给系统退出。
         child: Container(
-            decoration: const BoxDecoration(
-              gradient: LinearGradient(
-                begin: Alignment.topLeft,
-                end: Alignment.bottomRight,
-                colors: [
-                  Color(0xFF252b38),
-                  Color(0xFF101318),
-                ],
-              ),
-            ),
+            // 底衬与页面 surface 同色（随明暗模式）：Tab 交叉淡入淡出期间
+            // 两个 Tab 都半透明，若底衬是深色渐变会透出「先变黑再跳页」的
+            // 观感；用 surface 纯色衬底则全程与页面同色，无黑闪。
+            color: c.surface,
             child: Stack(
               children: <Widget>[
                 //=========== 页面内容区（Tab 切换 = 一镜到底交叉变换） ===========
@@ -304,11 +298,11 @@ class _TabView extends StatelessWidget {
         ignoring: !selected,
         child: AnimatedOpacity(
           opacity: selected ? 1 : 0,
-          duration: const Duration(milliseconds: 380),
+          duration: const Duration(milliseconds: 240),
           curve: Curves.easeOutCubic,
           child: AnimatedScale(
             scale: selected ? 1 : 0.97,
-            duration: const Duration(milliseconds: 380),
+            duration: const Duration(milliseconds: 240),
             curve: Curves.easeOutCubic,
             child: child,
           ),

@@ -28,6 +28,11 @@ class AppChangelog {
 
   /// 全部版本（倒序：最新在最前）
   static const List<ChangelogVersion> versions = <ChangelogVersion>[
+    ChangelogVersion('1.0.4', '2026-10-22', <ChangelogEntry>[
+      ChangelogEntry('修复', '「关于」页「更新」卡片顶部多余的细分隔线'),
+      ChangelogEntry('修复', '应用内更新源 GitHub 仓库地址修正，检查更新可正常连通'),
+      ChangelogEntry('优化', '页面切换动画提速，去除切换时的黑闪（底衬改为随主题同色）'),
+    ]),
     ChangelogVersion('1.0.2', '2026-10-21', <ChangelogEntry>[
       ChangelogEntry('优化', '「关于」页应用图标与桌面启动图标保持一致（深蓝底白色房子）'),
       ChangelogEntry('优化', '更新弹窗适配深色模式，更新内容去除 Markdown 符号并按「新增 / 优化 / 修复」彩色标签展示'),

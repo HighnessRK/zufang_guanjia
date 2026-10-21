@@ -5,12 +5,12 @@ class AppConstants {
 
   //========================= 应用信息 =========================
   static const String appName = '租房管家';
-  static const String appVersion = '1.0.2';
-  static const String appBuild = '4';
+  static const String appVersion = '1.0.4';
+  static const String appBuild = '5';
 
   /// ====== 应用内更新：Release 仓库（GitHub / Gitee 同名公开仓库）======
   static const String updateRepoName = 'zufang_guanjia';
-  static const String updateRepoGitHubOwner = 'HighnesssRK';
+  static const String updateRepoGitHubOwner = 'HighnessRK';
   static const String updateRepoGiteeOwner = 'HighnesssRK';
   static const String appDesc = '纯本地离线 · 个人房东房源租户管理';
 
