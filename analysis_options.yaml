@@ -1,0 +1,21 @@
+# Dart 静态分析规则：保持代码规范、无冗余
+include: package:flutter_lints/flutter.yaml
+
+analyzer:
+  exclude:
+    - '**/*.g.dart'
+    - build/**
+    - android/**
+    # 本地 vendor 包的 example / test 属上游独立工程，不混入主工程分析
+    - packages/liquid_glass_bottom_nav/example/**
+    - packages/liquid_glass_bottom_nav/test/**
+  language:
+    strict-casts: true
+    strict-inference: true
+
+linter:
+  rules:
+    prefer_const_constructors: true
+    prefer_final_locals: true
+    avoid_print: true
+    prefer_single_quotes: true

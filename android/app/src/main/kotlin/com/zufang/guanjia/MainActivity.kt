@@ -1,0 +1,388 @@
+package com.zufang.guanjia
+
+import android.Manifest
+import android.app.Activity
+import android.content.Intent
+import android.content.pm.PackageManager
+import android.net.Uri
+import android.os.Build
+import android.os.Bundle
+import android.util.Log
+import androidx.core.app.ActivityCompat
+import androidx.core.content.ContextCompat
+import androidx.core.content.FileProvider
+import com.zufang.guanjia.notify.FocusNotificationHelper
+import com.zufang.guanjia.notify.NotificationHelper
+import io.flutter.embedding.android.FlutterActivity
+import io.flutter.embedding.engine.FlutterEngine
+import io.flutter.plugin.common.MethodChannel
+import java.io.File
+import java.io.FileInputStream
+import java.io.FileOutputStream
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
+import java.util.zip.ZipEntry
+import java.util.zip.ZipInputStream
+import java.util.zip.ZipOutputStream
+
+/**
+ * 主 Activity：承载 Flutter 引擎，并通过 MethodChannel 暴露原生能力。
+ *
+ * 暴露给 Dart 的方法：
+ *   systemInfo           查询设备信息（厂商 / 型号 / 系统版本 / 是否小米）
+ *   requestNotifyPermission  申请 Android 13+ 通知权限
+ *   focusStatus          查询超级岛状态（协议版本 / 岛支持 / 焦点权限）
+ *   showNotification     发送系统通知（可选焦点通知增强）
+ *   cancelNotification   取消一条通知
+ *   cancelAll            取消全部通知
+ *   backup               备份数据库 + info.gwt 并分享
+ *   pickBackupFile       弹出系统文件选择器选择备份包
+ *   restore              用备份包覆盖数据库 + info.gwt
+ */
+class MainActivity : FlutterActivity() {
+
+    companion object {
+        private const val CHANNEL_NAME = "com.zufang.guanjia/native"
+        private const val REQ_NOTIFY = 1001
+        private const val REQ_PICK_BACKUP = 1002
+        private const val TAG = "FocusNotify"
+    }
+
+    private var methodChannel: MethodChannel? = null
+
+    /** 等待文件选择结果的 Dart 回调 */
+    private var pendingPickResult: MethodChannel.Result? = null
+
+    override fun onResume() {
+        super.onResume()
+        // 用户主动打开应用 = 重新关注：清除 Live Update 的"已划掉"记录，
+        // 下一次定时刷新会恢复进度通知（否则划掉一次就永远不回来了）
+        NotificationHelper.clearLiveDismissed(this)
+    }
+
+    override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
+        super.configureFlutterEngine(flutterEngine)
+
+        // 通知渠道初始化
+        NotificationHelper.ensureChannels(this)
+
+        methodChannel = MethodChannel(
+            flutterEngine.dartExecutor.binaryMessenger,
+            CHANNEL_NAME
+        )
+
+        methodChannel?.setMethodCallHandler { call, result ->
+            when (call.method) {
+
+                //==================== 设备信息 ====================
+                "systemInfo" -> {
+                    val map = HashMap<String, Any>()
+                    map["manufacturer"] = Build.MANUFACTURER ?: ""
+                    map["model"] = Build.MODEL ?: ""
+                    map["brand"] = Build.BRAND ?: ""
+                    map["androidVersion"] = Build.VERSION.RELEASE ?: ""
+                    map["sdkInt"] = Build.VERSION.SDK_INT
+                    map["isXiaomi"] = FocusNotificationHelper.isXiaomiDevice()
+                    result.success(map)
+                }
+
+                //==================== 通知权限 ====================
+                "requestNotifyPermission" -> {
+                    result.success(requestNotifyPermission())
+                }
+
+                //==================== 应用内更新：调起系统安装器 ====================
+                "installApk" -> {
+                    try {
+                        val path = call.argument<String>("path") ?: ""
+                        val file = File(path)
+                        if (!file.exists()) {
+                            result.error("ENOENT", "APK 文件不存在", path)
+                            return@setMethodCallHandler
+                        }
+                        val uri = FileProvider.getUriForFile(
+                            this, "$packageName.fileprovider", file
+                        )
+                        val intent = Intent(Intent.ACTION_VIEW).apply {
+                            setDataAndType(
+                                uri, "application/vnd.android.package-archive"
+                            )
+                            addFlags(
+                                Intent.FLAG_GRANT_READ_URI_PERMISSION or
+                                        Intent.FLAG_ACTIVITY_NEW_TASK
+                            )
+                        }
+                        startActivity(intent)
+                        result.success(true)
+                    } catch (e: Exception) {
+                        result.error("INSTALL", e.message, null)
+                    }
+                }
+
+                //==================== 超级岛 / 焦点通知状态 ====================
+                "focusStatus" -> {
+                    // canShowFocus 是 provider call（耗时操作），整组查询放到后台线程
+                    Thread {
+                        val map = HashMap<String, Any>()
+                        map["isXiaomi"] = FocusNotificationHelper.isXiaomiDevice()
+                        map["protocol"] = FocusNotificationHelper.focusProtocolVersion(this)
+                        map["supportIsland"] = FocusNotificationHelper.isSupportIsland()
+                        map["hasFocusPermission"] =
+                            FocusNotificationHelper.hasFocusPermission(this)
+                        map["xmsfGate"] = FocusNotificationHelper.isXmsfGateReady(this)
+                        map["ready"] = FocusNotificationHelper.isReadyForSuperIsland(this)
+                        // Android 16 Live Update 能力（实验室 Beta 诊断用）
+                        map.putAll(NotificationHelper.liveCapabilities(this))
+                        Log.i(TAG, "focusStatus = $map")
+                        runOnUiThread { result.success(map) }
+                    }.start()
+                }
+
+                //==================== 发送通知 ====================
+                "showNotification" -> {
+                    val id = call.argument<Int>("id") ?: 0
+                    val title = call.argument<String>("title") ?: ""
+                    val body = call.argument<String>("body") ?: ""
+                    val bigText = call.argument<String>("bigText")
+                    val channelId = call.argument<String>("channelId")
+                        ?: NotificationHelper.CHANNEL_GENERAL
+                    val focus = call.argument<Boolean>("focus") ?: false
+                    val ongoing = call.argument<Boolean>("ongoing") ?: false
+                    val live = call.argument<Boolean>("live") ?: false
+                    val restart = call.argument<Boolean>("restart") ?: false
+                    val progress = call.argument<Int>("progress") ?: 0
+                    val progressMax = call.argument<Int>("progressMax") ?: 100
+                    val criticalText = call.argument<String>("criticalText")
+
+                    if (live) {
+                        // Android 16 Live Updates：同一 id 原地更新进度
+                        NotificationHelper.postLive(
+                            context = this,
+                            id = id,
+                            title = title,
+                            body = body,
+                            progress = progress,
+                            progressMax = progressMax,
+                            criticalText = criticalText,
+                            restart = restart
+                        )
+                        result.success(null)
+                        return@setMethodCallHandler
+                    }
+
+                    // 焦点通知开启时，把渠道换成焦点渠道以获得更高展示优先级
+                    val channel = if (focus) {
+                        NotificationHelper.CHANNEL_FOCUS
+                    } else {
+                        channelId
+                    }
+
+                    NotificationHelper.post(
+                        context = this,
+                        id = id,
+                        channelId = channel,
+                        title = title,
+                        body = body,
+                        bigText = bigText,
+                        ongoing = ongoing
+                    )
+                    result.success(null)
+                }
+
+                //==================== 取消通知 ====================
+                "cancelNotification" -> {
+                    NotificationHelper.cancel(this, call.argument<Int>("id") ?: 0)
+                    result.success(null)
+                }
+
+                "cancelAll" -> {
+                    NotificationHelper.cancelAll(this)
+                    result.success(null)
+                }
+
+                //==================== 备份 ====================
+                "backup" -> {
+                    try {
+                        val dbPath = call.argument<String>("dbPath") ?: ""
+                        val configPath = call.argument<String>("configPath") ?: ""
+                        val name = doBackup(dbPath, configPath)
+                        result.success(name)
+                    } catch (e: Exception) {
+                        result.error("BACKUP_FAILED", e.message, null)
+                    }
+                }
+
+                //==================== 选择备份包 ====================
+                "pickBackupFile" -> {
+                    pendingPickResult = result
+                    val intent = Intent(Intent.ACTION_OPEN_DOCUMENT).apply {
+                        addCategory(Intent.CATEGORY_OPENABLE)
+                        type = "application/zip"
+                        putExtra(Intent.EXTRA_MIME_TYPES, arrayOf("application/zip", "*/*"))
+                    }
+                    startActivityForResult(intent, REQ_PICK_BACKUP)
+                }
+
+                //==================== 恢复 ====================
+                "restore" -> {
+                    try {
+                        val sourcePath = call.argument<String>("sourcePath") ?: ""
+                        val dbPath = call.argument<String>("dbPath") ?: ""
+                        val configPath = call.argument<String>("configPath") ?: ""
+                        val ok = doRestore(sourcePath, dbPath, configPath)
+                        result.success(ok)
+                    } catch (e: Exception) {
+                        result.error("RESTORE_FAILED", e.message, null)
+                    }
+                }
+
+                else -> result.notImplemented()
+            }
+        }
+    }
+
+    //========================= 通知权限 =========================
+
+    /**
+     * 申请通知权限：Android 13+ 需要运行时申请，低版本直接放行
+     */
+    private fun requestNotifyPermission(): Boolean {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) return true
+
+        val granted = ContextCompat.checkSelfPermission(
+            this, Manifest.permission.POST_NOTIFICATIONS
+        ) == PackageManager.PERMISSION_GRANTED
+
+        if (granted) return true
+
+        ActivityCompat.requestPermissions(
+            this,
+            arrayOf(Manifest.permission.POST_NOTIFICATIONS),
+            REQ_NOTIFY
+        )
+        // 以实际授权结果为准，这里先返回 true 让 Dart 不阻塞流程
+        return true
+    }
+
+    //========================= 备份 / 恢复 =====================
+
+    /**
+     * 备份：把 rental.db + info.gwt 打成 zip，放到应用外部私有目录并调起系统分享
+     *
+     * @return 备份文件名
+     */
+    private fun doBackup(dbPath: String, configPath: String): String {
+        val dir = File(getExternalFilesDir(null), "backup")
+        if (!dir.exists()) dir.mkdirs()
+
+        val stamp = SimpleDateFormat("yyyyMMdd_HHmmss", Locale.getDefault()).format(Date())
+        val outFile = File(dir, "zufang_guanjia_backup_$stamp.zip")
+
+        ZipOutputStream(FileOutputStream(outFile)).use { zos ->
+            putFileIntoZip(zos, File(dbPath), "rental.db")
+            putFileIntoZip(zos, File(configPath), "info.gwt")
+        }
+
+        // 调起系统分享，用户可发到微信 / 网盘 / 本地文件
+        try {
+            val uri: Uri = FileProvider.getUriForFile(
+                this, "$packageName.fileprovider", outFile
+            )
+            val send = Intent(Intent.ACTION_SEND).apply {
+                type = "application/zip"
+                putExtra(Intent.EXTRA_STREAM, uri)
+                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            }
+            startActivity(
+                Intent.createChooser(send, "保存租房管家备份").apply {
+                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                }
+            )
+        } catch (_: Throwable) {
+            // 分享失败不影响备份文件已生成
+        }
+
+        return outFile.name
+    }
+
+    /**
+     * 把单个文件写入 zip
+     */
+    private fun putFileIntoZip(zos: ZipOutputStream, file: File, entryName: String) {
+        if (!file.exists()) return
+        zos.putNextEntry(ZipEntry(entryName))
+        FileInputStream(file).use { input ->
+            input.copyTo(zos)
+        }
+        zos.closeEntry()
+    }
+
+    /**
+     * 恢复：解压备份包，把 rental.db / info.gwt 覆盖回去
+     */
+    private fun doRestore(sourcePath: String, dbPath: String, configPath: String): Boolean {
+        val source = File(sourcePath)
+        if (!source.exists()) return false
+
+        var dbBytes: ByteArray? = null
+        var cfgBytes: ByteArray? = null
+
+        ZipInputStream(FileInputStream(source)).use { zis ->
+            var entry = zis.nextEntry
+            while (entry != null) {
+                val bytes = zis.readBytes()
+                when (entry.name) {
+                    "rental.db" -> dbBytes = bytes
+                    "info.gwt" -> cfgBytes = bytes
+                }
+                zis.closeEntry()
+                entry = zis.nextEntry
+            }
+        }
+
+        val db = dbBytes ?: return false
+
+        // 覆盖数据库
+        File(dbPath).parentFile?.mkdirs()
+        FileOutputStream(File(dbPath)).use { it.write(db) }
+
+        // 覆盖配置文件（可选）
+        if (cfgBytes != null && configPath.isNotBlank()) {
+            FileOutputStream(File(configPath)).use { it.write(cfgBytes) }
+        }
+        return true
+    }
+
+    //========================= 文件选择回调 =====================
+
+    override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
+        super.onActivityResult(requestCode, resultCode, data)
+
+        if (requestCode == REQ_PICK_BACKUP) {
+            val result = pendingPickResult
+            pendingPickResult = null
+
+            if (resultCode != Activity.RESULT_OK || data?.data == null) {
+                result?.success(null)
+                return
+            }
+
+            try {
+                val uri: Uri = data.data!!
+                // 把 content:// 流复制到缓存文件，方便 Dart / 原生统一按路径读取
+                val tmp = File(cacheDir, "restore_backup.zip")
+                contentResolver.openInputStream(uri)?.use { input ->
+                    FileOutputStream(tmp).use { output -> input.copyTo(output) }
+                }
+                result?.success(tmp.absolutePath)
+            } catch (e: Exception) {
+                result?.error("PICK_FAILED", e.message, null)
+            }
+        }
+    }
+
+    override fun onDestroy() {
+        super.onDestroy()
+    }
+}

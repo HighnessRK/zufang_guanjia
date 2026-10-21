@@ -1,0 +1,82 @@
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <!-- ====== 通知相关权限 ====== -->
+    <!-- Android 13+ 通知运行时权限 -->
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <!-- 大模型拍照识别（仅用户主动触发时联网调用 API） -->
+    <uses-permission android:name="android.permission.INTERNET" />
+    <!-- Android 12+ 通知小图标需要 -->
+    <uses-permission android:name="android.permission.VIBRATE" />
+    <!-- Android 16 Live Updates：晋升常驻通知（静态声明即可，无运行时弹窗） -->
+    <uses-permission android:name="android.permission.POST_PROMOTED_NOTIFICATIONS" />
+    <!-- 应用内更新：安装已下载的 APK（Android 8+ 需声明） -->
+    <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
+    <!-- 超级岛：Aurogon 校验门需要查询 / 切换网络规则状态 -->
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+
+    <!-- 超级岛：允许查询小米推送服务框架（XMSF）的 UID -->
+    <queries>
+        <package android:name="com.xiaomi.xmsf" />
+        <!-- 拍照识别调起系统相机 -->
+        <intent>
+            <action android:name="android.media.action.IMAGE_CAPTURE" />
+        </intent>
+        <!-- 租户一键拨号：tel: 拨号盘（Android 11+ 包可见性） -->
+        <intent>
+            <action android:name="android.intent.action.DIAL" />
+            <data android:scheme="tel" />
+        </intent>
+    </queries>
+
+    <application
+        android:label="租房管家"
+        android:name="${applicationName}"
+        android:icon="@mipmap/ic_launcher"
+        android:roundIcon="@mipmap/ic_launcher_round"
+        android:enableOnBackInvokedCallback="true"
+        android:usesCleartextTraffic="true">
+        <!-- INTERNET：仅用于用户主动触发的大模型拍照识别 API 调用
+             （业务数据全程离线，不上传） -->
+        <!-- usesCleartextTraffic：允许内网自建推理服务（如 http://192.168.x.x:11434） -->
+        <!-- enableOnBackInvokedCallback：预测式返回（金标联盟跟手返回） -->
+        <!-- 未声明 android:largeHeap：公平运行内存，不额外索要大堆内存 -->
+
+        <activity
+            android:name=".MainActivity"
+            android:exported="true"
+            android:launchMode="singleTop"
+            android:taskAffinity=""
+            android:theme="@style/LaunchTheme"
+            android:configChanges="orientation|keyboardHidden|keyboard|screenSize|smallestScreenSize|locale|layoutDirection|fontScale|screenLayout|density|uiMode"
+            android:hardwareAccelerated="true"
+            android:windowSoftInputMode="adjustResize">
+            <meta-data
+                android:name="io.flutter.embedding.android.NormalTheme"
+                android:resource="@style/NormalTheme" />
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+
+        <!-- ====== Live Update 被划掉 / 取消关注时记录状态 ====== -->
+        <receiver
+            android:name=".notify.LiveDismissReceiver"
+            android:exported="false" />
+
+        <!-- ====== 备份文件分享（FileProvider） ====== -->
+        <provider
+            android:name="androidx.core.content.FileProvider"
+            android:authorities="${applicationId}.fileprovider"
+            android:exported="false"
+            android:grantUriPermissions="true">
+            <meta-data
+                android:name="android.support.FILE_PROVIDER_PATHS"
+                android:resource="@xml/file_paths" />
+        </provider>
+
+        <meta-data
+            android:name="flutterEmbedding"
+            android:value="2" />
+    </application>
+</manifest>

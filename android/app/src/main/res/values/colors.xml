@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- 自适应图标背景层：取新渐变图标的左上角色（铺满后仅圆角缝隙可见） -->
+    <color name="ic_launcher_background">#BFE2FE</color>
+    <color name="notify_accent">#3482FF</color>
+</resources>

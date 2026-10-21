@@ -1,0 +1,186 @@
+#===============================================================================
+# 租房管家 · CODING 云原生构建流水线（.coding-ci.yml）
+#-------------------------------------------------------------------------------
+# 特性：
+#   ✅ 全程使用 CODING 免费公共构建节点，零付费资源
+#   ✅ 自动安装 Flutter 稳定版 + JDK17 + Android SDK，无需自备镜像
+#   ✅ Gradle / Pub / SDK 多级缓存加速，二次构建快 60% 以上
+#   ✅ Base64 还原 Keystore，自动编译「已签名 Release 正式 APK」
+#   ✅ 自动把 APK 推送到 CODING 制品库，网页直接下载
+#   ✅ 没有配置签名时自动退回 debug 签名，保证总能出包
+#
+# 触发条件：master 分支收到 push 事件时自动执行
+#
+# 需要在 CODING「项目设置 → 研发资源 → 环境变量」里配置的变量见文末注释
+#===============================================================================
+
+master:
+  push:
+    - runner:
+        # 申请 4 核 CPU（内存 = 核数 × 2G = 8G），足够 Flutter + Android 编译
+        # 公共构建节点免费，核数越大越快，但免费额度消耗也越快
+        cpus: 4
+
+      docker:
+        # 构建环境镜像：Ubuntu 22.04 官方镜像（免费公开镜像）
+        # 构建所需的 JDK / Android SDK / Flutter 都在「安装构建环境」阶段自动就绪
+        image: ubuntu:22.04
+
+        # ====== 缓存目录（写时复制，二次构建免重复下载）======
+        volumes:
+          - /opt/flutter:copy-on-write        # Flutter SDK
+          - /opt/android-sdk:copy-on-write    # Android SDK
+          - /root/.gradle:copy-on-write       # Gradle 依赖与 Wrapper
+          - /root/.pub-cache:copy-on-write    # Dart / Flutter 包缓存
+
+      stages:
+
+        #-----------------------------------------------------------------------
+        # 1. 安装构建环境（有缓存时秒过）
+        #-----------------------------------------------------------------------
+        - name: 安装构建环境
+          script: |
+            set -e
+            export DEBIAN_FRONTEND=noninteractive
+
+            # 基础工具
+            apt-get update -y
+            apt-get install -y --no-install-recommends \
+              curl wget unzip git zip openjdk-17-jdk-headless \
+              libglu1-mesa clang cmake ninja-build pkg-config
+
+            export JAVA_HOME=/usr/lib/jvm/java-17-openjdk-amd64
+            export PATH="$JAVA_HOME/bin:$PATH"
+            java -version
+
+            # ---------- Android SDK（带缓存） ----------
+            export ANDROID_HOME=/opt/android-sdk
+            export ANDROID_SDK_ROOT=$ANDROID_HOME
+            mkdir -p "$ANDROID_HOME/cmdline-tools"
+            if [ ! -d "$ANDROID_HOME/cmdline-tools/latest" ]; then
+              echo "==> 下载 Android 命令行工具 ..."
+              curl -fsSL -o /tmp/cmdline-tools.zip \
+                https://dl.google.com/android/repository/commandlinetools-linux-11076708_latest.zip
+              unzip -q -o /tmp/cmdline-tools.zip -d /tmp/cmdline
+              mkdir -p "$ANDROID_HOME/cmdline-tools/latest"
+              mv /tmp/cmdline/cmdline-tools/* "$ANDROID_HOME/cmdline-tools/latest/"
+            fi
+            export PATH="$ANDROID_HOME/cmdline-tools/latest/bin:$ANDROID_HOME/platform-tools:$PATH"
+            yes | sdkmanager --licenses > /dev/null || true
+            sdkmanager "platform-tools" "platforms;android-34" "build-tools;34.0.0" > /dev/null
+
+            # ---------- Flutter 稳定版（带缓存） ----------
+            if [ ! -d /opt/flutter ]; then
+              echo "==> 下载 Flutter 稳定版 ..."
+              git clone --depth 1 -b stable https://github.com/flutter/flutter.git /opt/flutter
+            fi
+            export PATH="/opt/flutter/bin:$PATH"
+            flutter --version
+            flutter config --android-sdk "$ANDROID_HOME"
+            flutter doctor --android-licenses > /dev/null || true
+            flutter pub get
+
+        #-----------------------------------------------------------------------
+        # 2. 还原签名文件（Base64 -> key.jks + key.properties）
+        #    未配置 KEYSTORE_BASE64 时跳过，稍后自动使用 debug 签名
+        #-----------------------------------------------------------------------
+        - name: 还原签名文件
+          script: |
+            set -e
+            if [ -z "${KEYSTORE_BASE64:-}" ]; then
+              echo "⚠️  未检测到 KEYSTORE_BASE64 环境变量，将使用 debug 签名"
+              echo "   （正式发布请按 docs/02_Keystore生成与CODING配置.md 配置签名）"
+              exit 0
+            fi
+
+            echo "==> 还原 Keystore ..."
+            echo "$KEYSTORE_BASE64" | base64 -d > android/key.jks
+
+            cat > android/key.properties <<EOF
+            storePassword=${KEYSTORE_PASSWORD}
+            keyPassword=${KEY_PASSWORD}
+            keyAlias=${KEY_ALIAS}
+            storeFile=key.jks
+            EOF
+
+            echo "✅ 签名文件已还原："
+            ls -lh android/key.jks android/key.properties
+
+        #-----------------------------------------------------------------------
+        # 3. 编译已签名 Release 正式 APK
+        #-----------------------------------------------------------------------
+        - name: 编译正式版 APK
+          script: |
+            set -e
+            export JAVA_HOME=/usr/lib/jvm/java-17-openjdk-amd64
+            export ANDROID_HOME=/opt/android-sdk
+            export ANDROID_SDK_ROOT=$ANDROID_HOME
+            export PATH="$JAVA_HOME/bin:/opt/flutter/bin:$ANDROID_HOME/cmdline-tools/latest/bin:$ANDROID_HOME/platform-tools:$PATH"
+
+            cd /workspace || cd "$PWD"
+            bash android/ensure_gradle_wrapper.sh
+
+            flutter clean
+            flutter pub get
+            # --split-per-abi 生成按 CPU 架构拆分的包体更小；这里输出通用 release APK
+            flutter build apk --release
+
+            echo "==> 构建产物："
+            find build -name "*.apk" -exec ls -lh {} \;
+
+        #-----------------------------------------------------------------------
+        # 4. 归档 APK 制品到 CODING 制品库（网页可直接下载）
+        #-----------------------------------------------------------------------
+        - name: 归档 APK 制品
+          script: |
+            set -e
+            APK_PATH=$(find build -name "app-release.apk" | head -n 1)
+            if [ -z "$APK_PATH" ]; then
+              APK_PATH=$(find build -name "*.apk" | head -n 1)
+            fi
+            if [ -z "$APK_PATH" ]; then
+              echo "❌ 未找到 APK 产物"; exit 1
+            fi
+
+            VERSION=$(grep -E '^version:' pubspec.yaml | awk '{print $2}')
+            FINAL_NAME="zufang_guanjia_${VERSION}.apk"
+            cp "$APK_PATH" "/workspace/$FINAL_NAME" 2>/dev/null || cp "$APK_PATH" "./$FINAL_NAME"
+
+            ls -lh "$FINAL_NAME"
+            echo "✅ APK 已生成：$FINAL_NAME"
+
+            # 推送到 CODING 制品库（generic 仓库），未配置则跳过
+            if [ -n "${CODING_ARTIFACT_URL:-}" ] && [ -n "${CODING_ARTIFACT_TOKEN:-}" ]; then
+              echo "==> 上传到 CODING 制品库 ..."
+              curl -T "$FINAL_NAME" \
+                -u "${CODING_ARTIFACT_USER:-${CODING_USERNAME}}:${CODING_ARTIFACT_TOKEN}" \
+                "${CODING_ARTIFACT_URL}/${FINAL_NAME}?version=${VERSION}"
+              echo "✅ 已归档，可在「制品管理」页面直接下载"
+            else
+              echo "⚠️  未配置 CODING_ARTIFACT_URL / CODING_ARTIFACT_TOKEN，跳过制品归档"
+              echo "   APK 仍可在本次构建日志下方的「工作目录」中找到"
+            fi
+
+        #-----------------------------------------------------------------------
+        # 5. 完成
+        #-----------------------------------------------------------------------
+        - name: 完成
+          script: |
+            echo "🎉 租房管家 APK 构建完成"
+
+#===============================================================================
+# 需要配置的环境变量（CODING 项目 → 项目设置 → 研发资源 → 环境变量）
+#-------------------------------------------------------------------------------
+# 变量名                | 是否必填 | 说明
+#----------------------|----------|--------------------------------------------
+# KEYSTORE_BASE64       | 可选     | key.jks 的 Base64（私密变量，详见 docs/02）
+# KEYSTORE_PASSWORD     | 可选     | keystore 密码
+# KEY_PASSWORD          | 可选     | key 密码
+# KEY_ALIAS             | 可选     | key 别名，如 upload
+# CODING_ARTIFACT_URL   | 可选     | 制品库 generic 推送地址
+# CODING_ARTIFACT_TOKEN | 可选     | 制品库访问令牌（私密变量）
+# CODING_USERNAME       | 可选     | CODING 账号邮箱
+#
+# 说明：全部变量都是「可选」，不配置也能出包（debug 签名 + 本地产物）。
+#       正式上架 / 分发请务必配置签名变量。
+#===============================================================================

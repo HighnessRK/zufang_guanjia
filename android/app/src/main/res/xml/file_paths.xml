@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- FileProvider 可见路径：备份文件放在应用外部私有目录的 backup/ 下 -->
+<paths>
+    <external-files-path name="backup" path="backup/" />
+    <cache-path name="cache" path="/" />
+</paths>

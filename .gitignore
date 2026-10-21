@@ -1,0 +1,26 @@
+# Flutter / Dart
+.dart_tool/
+.packages
+build/
+.flutter-plugins
+.flutter-plugins-dependencies
+.pub-cache/
+.pub/
+coverage/
+
+# Android
+android/.gradle/
+android/local.properties
+android/app/.cxx/
+android/key.properties
+*.jks
+*.keystore
+*.keystore.b64
+
+# IDE
+.idea/
+.vscode/
+*.iml
+
+# 系统
+.DS_Store

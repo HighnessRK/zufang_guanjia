@@ -1,0 +1,56 @@
+name: zufang_guanjia
+description: 租房管家 —— 纯本地离线租房管理安卓 APP（房源 / 租户 / 房租 / 水电费 / 到期提醒）。
+publish_to: 'none'
+version: 1.0.0+2
+
+environment:
+  # 需要 Flutter 3.24 及以上稳定版（Dart 3.5）
+  sdk: '>=3.5.0 <4.0.0'
+
+dependencies:
+  flutter:
+    sdk: flutter
+  flutter_localizations:
+    sdk: flutter
+
+  # ====== UI：小米澎湃OS HyperOS 原生风格组件库（miuix 的 Flutter 1:1 移植版，Apache-2.0 开源免费）======
+  flutter_miuix: ^1.3.0
+
+  # ====== 底部导航：液态玻璃磨砂材质（开源免费，内置 Impeller 玻璃着色器，不支持时自动降级）======
+  # 本地 vendor（MIT）：可定制液态玻璃参数以对齐大狗记 Pronto 的质感
+  liquid_glass_bottom_nav:
+    path: packages/liquid_glass_bottom_nav
+
+  # ====== 本地数据：SQLite 数据库（sqflite 官方开源，MIT 协议）======
+  sqflite: ^2.3.0
+  path: ^1.9.0
+
+  # ====== 本地路径：用于定位 info.gwt 与数据库备份目录 ======
+  path_provider: ^2.1.0
+
+  # ====== 一键拨号：租户电话直接唤起系统拨号盘（tel: 深链，MIT）======
+  url_launcher: ^6.3.0
+
+  # ====== 相机拍照：电表读数大模型识别的取图入口（Android 走系统相机 Intent，
+  #      不申请 CAMERA 运行时权限）======
+  image_picker: ^1.1.2
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^4.0.0
+
+flutter:
+  uses-material-design: true
+
+  # 打包内置的默认配置文件模板，首次启动时释放到应用私有目录后读写
+  assets:
+    - assets/info.gwt
+
+  # ====== 着色器：顶栏「界内渐隐模糊」渐隐蒙版（Impeller 运行时滤镜）======
+  shaders:
+    - shaders/top_bar_fade.frag
+
+  # ====== 字体：不再打包 MiSans（-30MB）。主题 fontFamily 仍为 'MiSans'，
+  #      小米手机上由系统 /system/fonts/MiSans-* 直接命中，其它机型自动回退。
+  #      打包字体已移除，assets/fonts/*.ttf 仅保留在仓库中不再入包。
