@@ -867,6 +867,17 @@ Future<bool?> showAppDialog(
     transitionDuration: const Duration(milliseconds: 220),
     pageBuilder: (BuildContext ctx, Animation<double> a, Animation<double> b) {
       final MiuixColors c = MiuixTheme.of(ctx).colors;
+      // 键盘弹出时 MiuixOverlayDialog 面板可用高度收缩，内容列（含按钮行）
+      // 超高会被钳位，按钮会被画到面板圆角背景之外。这里按「屏幕高 − 键盘高
+      // − 顶部安全区 − 面板固定框架（标题/摘要/内边距/按钮行）」动态限制
+      // 内容区高度并允许滚动，保证按钮行始终落在面板背景内。
+      final MediaQueryData mq = MediaQuery.of(ctx);
+      const double kChrome = 240; // 标题+摘要(2行)+内边距+间距+按钮行 保守值
+      final double maxContent = (mq.size.height -
+              mq.viewInsets.bottom -
+              mq.padding.top -
+              kChrome)
+          .clamp(120.0, double.infinity);
       return MiuixOverlayDialog(
         show: true,
         renderInRootScaffold: false,
@@ -876,7 +887,11 @@ Future<bool?> showAppDialog(
         content: Column(
           mainAxisSize: MainAxisSize.min,
           children: <Widget>[
-            if (content != null) content,
+            if (content != null)
+              ConstrainedBox(
+                constraints: BoxConstraints(maxHeight: maxContent),
+                child: SingleChildScrollView(child: content),
+              ),
             const SizedBox(height: 18),
             Row(
               crossAxisAlignment: CrossAxisAlignment.center,
@@ -982,6 +997,7 @@ Future<T?> showOptionPicker<T>(
 /// 替换 Material 的 showDatePicker：整块面板是液态玻璃卡（页面极光从身后
 /// 透上来），内部是澎湃OS 月历（月份切换 / 周名行 / 6×7 日期网格 / 选中态
 /// 主色圆块 / 今天描边），底部「取消 / 确定」与全 App 弹窗按钮一致。
+/// 弹窗打开时身后页面整体高斯模糊 + 轻压暗，与背景分层。
 Future<DateTime?> showDatePickDialog(
   BuildContext context, {
   required String title,
@@ -995,13 +1011,30 @@ Future<DateTime?> showDatePickDialog(
     barrierLabel: 'dismiss',
     barrierColor: Colors.transparent,
     transitionDuration: const Duration(milliseconds: 220),
-    pageBuilder: (BuildContext ctx, Animation<double> a, Animation<double> b) =>
-        _DatePickDialog(
-      title: title,
-      initialDate: initialDate,
-      firstDate: firstDate ?? DateTime(1970),
-      lastDate: lastDate ?? DateTime(2100, 12, 31),
-    ),
+    pageBuilder: (BuildContext ctx, Animation<double> a, Animation<double> b) {
+      final bool isDark = MiuixTheme.of(ctx).brightness == Brightness.dark;
+      return Stack(
+        children: <Widget>[
+          // 高斯模糊遮罩：把弹窗身后的页面虚化并轻压暗，避免与背景混在一起
+          Positioned.fill(
+            child: IgnorePointer(
+              child: BackdropFilter(
+                filter: ImageFilter.blur(sigmaX: 24, sigmaY: 24),
+                child: ColoredBox(
+                  color: Colors.black.withValues(alpha: isDark ? 0.36 : 0.16),
+                ),
+              ),
+            ),
+          ),
+          _DatePickDialog(
+            title: title,
+            initialDate: initialDate,
+            firstDate: firstDate ?? DateTime(1970),
+            lastDate: lastDate ?? DateTime(2100, 12, 31),
+          ),
+        ],
+      );
+    },
   );
 }
 
@@ -1024,7 +1057,20 @@ class _DatePickDialog extends StatefulWidget {
 
 class _DatePickDialogState extends State<_DatePickDialog> {
   /// 当前选中日期（始终落在可选区间内）
-  late final DateTime _selected;
+  ///
+  /// 注意：不能声明为 final —— 点选日期时 [onDateChanged] 会二次赋值，
+  /// final 会在第二次点击时抛 LateInitializationError（选年跳月同理）。
+  late DateTime _selected;
+
+  /// 年份选择面板展开中（点月历顶部「xx年x月」进入）
+  bool _pickingYear = false;
+
+  /// 月历重建序号：选完年份后自增，令 MiuixDatePicker 以新的
+  /// initialDate 重建内部状态，跳转到目标年月。
+  int _calendarEpoch = 0;
+
+  /// 年份列表滚动控制器（展开时定位到当前选中年）
+  ScrollController? _yearScroll;
 
   @override
   void initState() {
@@ -1033,6 +1079,35 @@ class _DatePickDialogState extends State<_DatePickDialog> {
     if (d.isBefore(widget.firstDate)) d = widget.firstDate;
     if (d.isAfter(widget.lastDate)) d = widget.lastDate;
     _selected = DateTime(d.year, d.month, d.day);
+  }
+
+  @override
+  void dispose() {
+    _yearScroll?.dispose();
+    super.dispose();
+  }
+
+  /// 展开年份面板，并预滚动到选中年所在行
+  void _openYearPicker() {
+    const int cols = 3;
+    final int row = (_selected.year - widget.firstDate.year) ~/ cols;
+    _yearScroll?.dispose();
+    // 每行高约 64（格高 56 + 间距 8），上留一行余量
+    _yearScroll = ScrollController(
+      initialScrollOffset: (row * 64 - 64).clamp(0.0, double.infinity).toDouble(),
+    );
+    setState(() => _pickingYear = true);
+  }
+
+  /// 选中年份：保持月份不变，日 clamp 到当月最后一天，回到月历并跳转
+  void _onYearPicked(int year) {
+    final int lastDay = DateTime(year, _selected.month + 1, 0).day;
+    final int day = _selected.day > lastDay ? lastDay : _selected.day;
+    setState(() {
+      _selected = DateTime(year, _selected.month, day);
+      _pickingYear = false;
+      _calendarEpoch++;
+    });
   }
 
   @override
@@ -1076,7 +1151,7 @@ class _DatePickDialogState extends State<_DatePickDialog> {
                           ),
                         ),
                         MiuixText(
-                          _selectedLabel,
+                          _pickingYear ? '选择年份' : _selectedLabel,
                           fontSize: 13,
                           fontWeight: FontWeight.w600,
                           color: c.primary,
@@ -1084,28 +1159,35 @@ class _DatePickDialogState extends State<_DatePickDialog> {
                       ],
                     ),
                     const SizedBox(height: 14),
-                    // 澎湃OS 月历：透明底，玻璃面板与极光从格子间透出
-                    MiuixDatePicker(
-                      initialDate: _selected,
-                      firstDate: widget.firstDate,
-                      lastDate: widget.lastDate,
-                      onDateChanged: (DateTime d) =>
-                          setState(() => _selected = d),
-                      colors: MiuixDatePickerColors(
-                        backgroundColor: Colors.transparent,
-                        headerColor: dc.headerColor,
-                        weekdayColor: dc.weekdayColor,
-                        weekendWeekdayColor: dc.weekendWeekdayColor,
-                        dayColor: dc.dayColor,
-                        weekendDayColor: dc.weekendDayColor,
-                        outOfMonthDayColor: dc.outOfMonthDayColor,
-                        selectedDayColor: dc.selectedDayColor,
-                        selectedDayTextColor: dc.selectedDayTextColor,
-                        todayBorderColor: dc.todayBorderColor,
-                        disabledDayColor: dc.disabledDayColor,
-                        navigationIconColor: dc.navigationIconColor,
+                    // 主体：年份选择面板 / 澎湃OS 月历（二选一）
+                    if (_pickingYear)
+                      _buildYearPanel(c)
+                    else
+                      MiuixDatePicker(
+                        // 选年后强制重建，跳转到目标年月
+                        key: ValueKey<int>(_calendarEpoch),
+                        initialDate: _selected,
+                        firstDate: widget.firstDate,
+                        lastDate: widget.lastDate,
+                        onDateChanged: (DateTime d) =>
+                            setState(() => _selected = d),
+                        // 点顶部「xx年x月」→ 进入年份快速选择
+                        onHeaderTap: _openYearPicker,
+                        colors: MiuixDatePickerColors(
+                          backgroundColor: Colors.transparent,
+                          headerColor: dc.headerColor,
+                          weekdayColor: dc.weekdayColor,
+                          weekendWeekdayColor: dc.weekendWeekdayColor,
+                          dayColor: dc.dayColor,
+                          weekendDayColor: dc.weekendDayColor,
+                          outOfMonthDayColor: dc.outOfMonthDayColor,
+                          selectedDayColor: dc.selectedDayColor,
+                          selectedDayTextColor: dc.selectedDayTextColor,
+                          todayBorderColor: dc.todayBorderColor,
+                          disabledDayColor: dc.disabledDayColor,
+                          navigationIconColor: dc.navigationIconColor,
+                        ),
                       ),
-                    ),
                     const SizedBox(height: 16),
                     Row(
                       children: <Widget>[
@@ -1131,6 +1213,57 @@ class _DatePickDialogState extends State<_DatePickDialog> {
             ),
           ),
         ),
+      ),
+    );
+  }
+
+  /// 年份快速选择面板：3 列网格，可滚动，选中年主色高亮、今年描边。
+  Widget _buildYearPanel(MiuixColors c) {
+    final int first = widget.firstDate.year;
+    final int last = widget.lastDate.year;
+    final int thisYear = DateTime.now().year;
+    return SizedBox(
+      height: 320,
+      child: GridView.builder(
+        controller: _yearScroll,
+        padding: EdgeInsets.zero,
+        gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+          crossAxisCount: 3,
+          mainAxisSpacing: 8,
+          crossAxisSpacing: 8,
+          childAspectRatio: 2.15,
+        ),
+        itemCount: last - first + 1,
+        itemBuilder: (BuildContext ctx, int i) {
+          final int year = first + i;
+          final bool selected = year == _selected.year;
+          final bool current = year == thisYear;
+          return GestureDetector(
+            behavior: HitTestBehavior.opaque,
+            onTap: () => _onYearPicked(year),
+            child: AnimatedContainer(
+              duration: const Duration(milliseconds: 160),
+              alignment: Alignment.center,
+              decoration: BoxDecoration(
+                color: selected
+                    ? c.primary
+                    : c.secondaryContainer.withValues(alpha: 0.55),
+                borderRadius: BorderRadius.circular(14),
+                border: current && !selected
+                    ? Border.all(color: c.primary, width: 1.4)
+                    : null,
+              ),
+              child: MiuixText(
+                '$year',
+                fontSize: 15,
+                fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
+                color: selected
+                    ? c.onPrimary
+                    : (current ? c.primary : c.onSurfaceContainer),
+              ),
+            ),
+          );
+        },
       ),
     );
   }

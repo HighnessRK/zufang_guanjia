@@ -107,7 +107,7 @@ class _SettingsPageState extends State<SettingsPage> {
                     const MiuixHorizontalDivider(),
                     MiuixArrowPreference(
                       title: '关于 ${AppConstants.appName}',
-                      summary: '版本 ${AppConstants.appVersion}',
+                      summary: 'V${AppConstants.appVersion}',
                       onClick: () => _push(const AboutPage()),
                     ),
                   ],

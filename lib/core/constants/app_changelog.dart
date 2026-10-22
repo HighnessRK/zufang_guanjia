@@ -28,6 +28,13 @@ class AppChangelog {
 
   /// 全部版本（倒序：最新在最前）
   static const List<ChangelogVersion> versions = <ChangelogVersion>[
+    ChangelogVersion('1.0.6', '2026-10-22', <ChangelogEntry>[
+      ChangelogEntry('新增', '房间详情「水电抄表」卡片新增「编辑」入口，可直接修改上期 / 本期电表、水表读数并实时预览费用'),
+      ChangelogEntry('优化', '日期选择器点击顶部「xx年x月」可快速切换年份，弹窗打开时背景高斯模糊遮罩'),
+      ChangelogEntry('优化', '版本号显示统一为大写 V 前缀（如 V1.0.6），不再显示构建号'),
+      ChangelogEntry('修复', '应用内更新弹窗「新增 / 修复 / 优化」彩色标签不显示的问题'),
+      ChangelogEntry('修复', '日期选择器连续点选多个日期时报错、选中日期不更新的问题'),
+    ]),
     ChangelogVersion('1.0.5', '2026-10-22', <ChangelogEntry>[
       ChangelogEntry('新增', '底部导航新增「收款」Tab：房租 / 水费 / 电费一处收齐，无需逐间进入详情'),
       ChangelogEntry('新增', '房型下拉选择（店面 / 单间 / 一室一厅 / 两室一厅 / 其他可自定义）'),

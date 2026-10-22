@@ -126,7 +126,7 @@ class _UpdateDialogState extends State<_UpdateDialog> {
                       fontWeight: FontWeight.w700,
                       color: c.onSurface),
                 ),
-                MiuixText('v${info.version}',
+                MiuixText('V${info.version}',
                     fontSize: 17,
                     fontWeight: FontWeight.w700,
                     color: c.primary),

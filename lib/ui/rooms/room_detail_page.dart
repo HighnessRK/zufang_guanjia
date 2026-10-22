@@ -5,6 +5,7 @@ import 'package:url_launcher/url_launcher.dart';
 
 import '../../core/config/app_config.dart';
 import '../../core/constants/app_constants.dart';
+import '../../core/utils/calc_util.dart';
 import '../../core/utils/date_util.dart';
 import '../../data/models/payment.dart';
 import '../../data/models/person.dart';
@@ -287,6 +288,19 @@ class _RoomDetailPageState extends State<RoomDetailPage> {
                         ? c.onSurfaceVariantSummary
                         : const Color(0xFF34C759)),
               ),
+              const SizedBox(width: 10),
+              // 编辑上期 / 本期水电读数
+              GestureDetector(
+                behavior: HitTestBehavior.opaque,
+                onTap: () => _openMeterEdit(room),
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 6),
+                  child: MiuixText('编辑',
+                      fontSize: 13,
+                      fontWeight: FontWeight.w600,
+                      color: c.primary),
+                ),
+              ),
             ],
           ),
           const SizedBox(height: 10),
@@ -303,6 +317,99 @@ class _RoomDetailPageState extends State<RoomDetailPage> {
         ],
       ),
     );
+  }
+
+  /// 编辑本房间水电读数（上期 / 本期电水表）。
+  /// 保存后按当前单价重算费用并跑一遍周期引擎，与抄表页口径一致。
+  Future<void> _openMeterEdit(Room room) async {
+    final TextEditingController elecPrev =
+        TextEditingController(text: '${room.elecPrev}');
+    final TextEditingController elecCurr =
+        TextEditingController(text: '${room.elecCurr}');
+    final TextEditingController waterPrev =
+        TextEditingController(text: '${room.waterPrev}');
+    final TextEditingController waterCurr =
+        TextEditingController(text: '${room.waterCurr}');
+    final List<TextEditingController> ctrls = <TextEditingController>[
+      elecPrev,
+      elecCurr,
+      waterPrev,
+      waterCurr,
+    ];
+
+    final bool? ok = await showAppDialog(
+      context,
+      title: '编辑水电读数',
+      summary: '修改后按当前单价重算费用',
+      confirmText: '保存',
+      content: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: <Widget>[
+          AppLabelField(
+              label: '上期电表', controller: elecPrev, labelWidth: 76),
+          AppLabelField(
+              label: '本期电表', controller: elecCurr, labelWidth: 76),
+          AppLabelField(
+              label: '上期水表', controller: waterPrev, labelWidth: 76),
+          AppLabelField(
+              label: '本期水表', controller: waterCurr, labelWidth: 76),
+          _MeterFeePreview(
+            room: room,
+            elecPrev: elecPrev,
+            elecCurr: elecCurr,
+            waterPrev: waterPrev,
+            waterCurr: waterCurr,
+          ),
+        ],
+      ),
+    );
+    // 先取值再销毁控制器，避免 use-after-dispose
+    final int ep = int.tryParse(elecPrev.text.trim()) ?? room.elecPrev;
+    final int ec = int.tryParse(elecCurr.text.trim()) ?? room.elecCurr;
+    final int wp = int.tryParse(waterPrev.text.trim()) ?? room.waterPrev;
+    final int wc = int.tryParse(waterCurr.text.trim()) ?? room.waterCurr;
+    for (final TextEditingController t in ctrls) {
+      t.dispose();
+    }
+    if (ok != true || !mounted) return;
+
+    // 本期读数小于上期 → 与抄表页一致二次确认
+    if (ec < ep || wc < wp) {
+      final bool? cont = await showAppDialog(
+        context,
+        title: '读数异常',
+        summary: '本期读数小于上期读数，可能导致账单为 0，确定继续保存吗？',
+        confirmText: '继续保存',
+        danger: true,
+      );
+      if (cont != true || !mounted) return;
+    }
+
+    final AppConfig cfg = AppConfig.instance;
+    final CalcResult r = CalcUtil.compute(
+      elecPrev: ep,
+      elecCurr: ec,
+      waterPrev: wp,
+      waterCurr: wc,
+      elecPrice: cfg.elecPrice,
+      waterPrice: cfg.waterPrice,
+    );
+    await RoomRepository.instance.updateMeter(
+      roomNo: room.roomNo,
+      elecPrev: ep,
+      elecCurr: ec,
+      waterPrev: wp,
+      waterCurr: wc,
+      elecFee: r.elecFee,
+      waterFee: r.waterFee,
+      utilityFee: r.totalFee,
+    );
+    // 跑一遍周期引擎：满周期的累计额立即生成待收流水
+    final List<Room> fresh = await RoomRepository.instance.all();
+    await PaymentRepository.instance.ensureCurrentPeriod(fresh);
+    if (!mounted) return;
+    AppSnackbar.show('已保存 ${room.roomNo} 水电读数，费用合计 ¥${r.totalFee}');
+    await _load();
   }
 
   /// 历史缴费流水卡
@@ -538,5 +645,78 @@ class _RoomDetailPageState extends State<RoomDetailPage> {
     if (!mounted) return;
     AppSnackbar.show('租户已删除');
     _load();
+  }
+}
+
+/// 水电读数编辑弹窗内的实时费用预览：
+/// 任一读数变化即按当前单价重算电费 / 水费 / 合计。
+class _MeterFeePreview extends StatefulWidget {
+  const _MeterFeePreview({
+    required this.room,
+    required this.elecPrev,
+    required this.elecCurr,
+    required this.waterPrev,
+    required this.waterCurr,
+  });
+
+  final Room room;
+  final TextEditingController elecPrev;
+  final TextEditingController elecCurr;
+  final TextEditingController waterPrev;
+  final TextEditingController waterCurr;
+
+  @override
+  State<_MeterFeePreview> createState() => _MeterFeePreviewState();
+}
+
+class _MeterFeePreviewState extends State<_MeterFeePreview> {
+  @override
+  void initState() {
+    super.initState();
+    for (final TextEditingController t in _ctrls) {
+      t.addListener(_sync);
+    }
+  }
+
+  @override
+  void dispose() {
+    for (final TextEditingController t in _ctrls) {
+      t.removeListener(_sync);
+    }
+    super.dispose();
+  }
+
+  List<TextEditingController> get _ctrls => <TextEditingController>[
+        widget.elecPrev,
+        widget.elecCurr,
+        widget.waterPrev,
+        widget.waterCurr,
+      ];
+
+  void _sync() {
+    if (mounted) setState(() {});
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final MiuixColors c = MiuixTheme.of(context).colors;
+    final Room room = widget.room;
+    final AppConfig cfg = AppConfig.instance;
+    final CalcResult r = CalcUtil.compute(
+      elecPrev: int.tryParse(widget.elecPrev.text.trim()) ?? room.elecPrev,
+      elecCurr: int.tryParse(widget.elecCurr.text.trim()) ?? room.elecCurr,
+      waterPrev: int.tryParse(widget.waterPrev.text.trim()) ?? room.waterPrev,
+      waterCurr: int.tryParse(widget.waterCurr.text.trim()) ?? room.waterCurr,
+      elecPrice: cfg.elecPrice,
+      waterPrice: cfg.waterPrice,
+    );
+    return Padding(
+      padding: const EdgeInsets.only(left: 86, top: 2),
+      child: MiuixText(
+        '重算预览：电费 ¥${r.elecFee} · 水费 ¥${r.waterFee} · 合计 ¥${r.totalFee}',
+        fontSize: 12,
+        color: c.onSurfaceVariantSummary,
+      ),
+    );
   }
 }

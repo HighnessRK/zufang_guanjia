@@ -105,11 +105,18 @@ class UpdateService {
     return '';
   }
 
+  /// 可识别的变更类型标签（与「更新日志」页配色一致）
+  static const List<String> kNoteTypes = <String>['新增', '优化', '修复', '变更', '安全'];
+
   /// 解析 Release 说明正文为条目列表。
-  /// 剥掉 markdown 标题符号 / 分隔线 / 安装包体积等噪声，
-  /// 识别「新增 / 优化 / 修复」前缀并归类（识别不到则 type 为空）。
+  /// 剥掉 markdown 标题符号 / 分隔线 / 安装包体积等噪声。
+  /// 支持两种写法：
+  /// 1. 分组标题 + 列表（`### 新增` 后跟 `- 条目`）——标题记录当前分组，
+  ///    其后条目沿用该类型（否则颜色标签全部丢失）；
+  /// 2. 行内前缀（`新增：条目`）——逐行识别。
   static List<UpdateNoteEntry> parseUpdateNotes(String notes) {
     final List<UpdateNoteEntry> out = <UpdateNoteEntry>[];
+    String currentType = '';
     for (String raw in notes.split('\n')) {
       String line = raw.trim();
       if (line.isEmpty) continue;
@@ -117,13 +124,19 @@ class UpdateService {
       if (RegExp(r'^[-*_=\s]{3,}$').hasMatch(line)) continue;
       // 跳过安装包体积行
       if (line.contains('.apk') || line.contains('Android 7')) continue;
-      // 去掉标题符号
-      line = line.replaceFirst(RegExp(r'^#{1,6}\s*'), '');
+      // markdown 标题行：类型标题（新增/优化/…）记录当前分组；
+      // 其它标题（更新内容 / 下载等）直接跳过，不混入条目
+      if (line.startsWith('#')) {
+        final String title =
+            line.replaceFirst(RegExp(r'^#{1,6}\s*'), '').trim();
+        if (kNoteTypes.contains(title)) currentType = title;
+        continue;
+      }
       // 去掉列表符号
       line = line.replaceFirst(RegExp(r'^[-*+•]\s*'), '');
       if (line.trim().isEmpty) continue;
-      String type = '';
-      for (final String t in <String>['新增', '优化', '修复', '安全']) {
+      String type = currentType;
+      for (final String t in kNoteTypes) {
         if (line.startsWith(t)) {
           type = t;
           line = line.substring(t.length).trim();

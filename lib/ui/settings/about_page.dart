@@ -51,7 +51,7 @@ class _AboutPageState extends State<AboutPage> {
     if (UpdateService.compareVersion(
             info.version, AppConstants.appVersion) <=
         0) {
-      AppSnackbar.show('已是最新版本 v${AppConstants.appVersion}');
+      AppSnackbar.show('已是最新版本 V${AppConstants.appVersion}');
       return;
     }
     await showUpdateDialog(context, info);
@@ -104,7 +104,7 @@ class _AboutPageState extends State<AboutPage> {
             const SizedBox(height: 4),
             Center(
               child: MiuixText(
-                '版本 ${AppConstants.appVersion} (${AppConstants.appBuild})',
+                'V${AppConstants.appVersion}',
                 fontSize: 13,
                 color: c.onSurfaceVariantSummary,
               ),
@@ -117,8 +117,7 @@ class _AboutPageState extends State<AboutPage> {
               child: Column(
                 children: <Widget>[
                   InfoRow('应用名称', AppConstants.appName),
-                  InfoRow('版本号', AppConstants.appVersion),
-                  InfoRow('构建号', AppConstants.appBuild),
+                  InfoRow('版本号', 'V${AppConstants.appVersion}'),
                   InfoRow('数据存储', '本地 SQLite + info.gwt'),
                 ],
               ),
@@ -133,7 +132,7 @@ class _AboutPageState extends State<AboutPage> {
                     title: '检查更新',
                     summary: _checking
                         ? '正在检查…'
-                        : '当前版本 v${AppConstants.appVersion} · 下载源 $sourceLabel',
+                        : '当前版本 V${AppConstants.appVersion} · 下载源 $sourceLabel',
                     onClick: _checking ? null : _checkUpdate,
                     endActions: <Widget>[
                       if (_checking)

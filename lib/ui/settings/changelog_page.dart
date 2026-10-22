@@ -39,7 +39,7 @@ class ChangelogSection extends StatelessWidget {
         children: <Widget>[
           Row(
             children: <Widget>[
-              MiuixText('v${v.version}',
+              MiuixText('V${v.version}',
                   fontSize: 17, fontWeight: FontWeight.w700),
               if (current) ...<Widget>[
                 const SizedBox(width: 8),
