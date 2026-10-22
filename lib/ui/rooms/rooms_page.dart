@@ -1,10 +1,13 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_miuix/miuix.dart';
 
+import '../../core/config/app_config.dart';
 import '../../core/utils/date_util.dart';
 import '../../data/models/room.dart';
 import '../../data/repository/payment_repository.dart';
 import '../../data/repository/room_repository.dart';
+import '../shell/app_shell.dart';
 import '../transitions.dart';
 import '../widgets/app_widgets.dart';
 import 'room_detail_page.dart';
@@ -40,6 +43,15 @@ class _RoomsPageState extends State<RoomsPage> {
   /// 未结清水电流水聚合（roomNo → 待收金额），「水电待收」标签口径
   Map<String, int> _utilOwed = <String, int>{};
 
+  /// 已折叠的楼层（默认全部展开；点楼层标题可收起/展开）
+  final Set<String> _collapsed = <String>{};
+
+  /// 感知底部 Tab 切换（从收款 Tab 收完款切回来要刷新欠款标签）
+  ValueListenable<int>? _tabIndex;
+
+  /// 本页在底部导航中的索引
+  static const int _tab = 1;
+
   @override
   void initState() {
     super.initState();
@@ -47,9 +59,26 @@ class _RoomsPageState extends State<RoomsPage> {
   }
 
   @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final ValueListenable<int> index = AppShellScope.of(context).selectedIndex;
+    if (!identical(_tabIndex, index)) {
+      _tabIndex?.removeListener(_onTabChanged);
+      _tabIndex = index;
+      _tabIndex!.addListener(_onTabChanged);
+    }
+  }
+
+  @override
   void dispose() {
+    _tabIndex?.removeListener(_onTabChanged);
     _searchCtrl.dispose();
     super.dispose();
+  }
+
+  /// 从其它 Tab 切回房间管理时重新拉取（收款 / 抄表 / 编辑都会改欠款）
+  void _onTabChanged() {
+    if (_tabIndex?.value == _tab && mounted) _load();
   }
 
   Future<void> _load() async {
@@ -79,6 +108,28 @@ class _RoomsPageState extends State<RoomsPage> {
     }).toList();
   }
 
+  /// 按楼层分组（与抄表页同一套口径 [Room.floorOf]）。
+  /// 返回值顺序：楼层号升序、「—」（房号无数字）排最后；层内按房号排序。
+  List<MapEntry<String, List<Room>>> _floorsOf(List<Room> rooms) {
+    final Map<String, List<Room>> m = <String, List<Room>>{};
+    for (final Room r in rooms) {
+      m.putIfAbsent(Room.floorOf(r.roomNo), () => <Room>[]).add(r);
+    }
+    final List<String> keys = m.keys.toList()
+      ..sort((String a, String b) {
+        final int na = int.tryParse(a) ?? 9999;
+        final int nb = int.tryParse(b) ?? 9999;
+        if (na != nb) return na.compareTo(nb);
+        return a.compareTo(b);
+      });
+    return keys
+        .map((String k) => MapEntry<String, List<Room>>(
+              k,
+              m[k]!..sort((Room a, Room b) => a.roomNo.compareTo(b.roomNo)),
+            ))
+        .toList();
+  }
+
   @override
   Widget build(BuildContext context) {
     final MiuixColors c = MiuixTheme.of(context).colors;
@@ -92,6 +143,14 @@ class _RoomsPageState extends State<RoomsPage> {
         subtitle:
             '共 ${_all.length} 间 · 在租 ${_all.where((Room r) => r.isOccupied).length} 间',
         actions: <Widget>[
+          MiuixIconButton(
+            onPressed: _openCollectPanel,
+            child: MiuixIcon(
+              icon: Icons.account_balance_wallet_rounded,
+              tint: c.primary,
+            ),
+          ),
+          const SizedBox(width: 8),
           MiuixIconButton(
             onPressed: _openAdd,
             child: MiuixIcon(icon: Icons.add_rounded, tint: c.primary),
@@ -131,22 +190,68 @@ class _RoomsPageState extends State<RoomsPage> {
                 ),
                 const SizedBox(height: 12),
 
-                //==================== 房间列表 ====================
+                //==================== 房间列表（按楼层分组）====================
                 if (list.isEmpty)
                   const Padding(
                     padding: EdgeInsets.only(top: 80),
                     child: EmptyView('还没有房间，点右上角 + 新增一间吧'),
                   )
                 else
-                  for (int i = 0; i < list.length; i++) ...<Widget>[
-                    _buildRoomCard(list[i], c),
-                    const SizedBox(height: 12),
-                  ],
+                  for (final MapEntry<String, List<Room>> f in _floorsOf(list))
+                    ...<Widget>[
+                      _buildFloorHeader(f.key, f.value.length, c),
+                      if (!_collapsed.contains(f.key))
+                        for (int i = 0; i < f.value.length; i++) ...<Widget>[
+                          _buildRoomCard(f.value[i], c),
+                          const SizedBox(height: 12),
+                        ],
+                    ],
               ],
             ),
           ),
         );
       },
+    );
+  }
+
+  /// 楼层标题：点击可折叠/展开该楼层，右侧箭头随状态旋转
+  Widget _buildFloorHeader(String floor, int count, MiuixColors c) {
+    final bool collapsed = _collapsed.contains(floor);
+    return Padding(
+      padding: const EdgeInsets.only(top: 4, bottom: 10),
+      child: GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTap: () => setState(() {
+          if (collapsed) {
+            _collapsed.remove(floor);
+          } else {
+            _collapsed.add(floor);
+          }
+        }),
+        child: Row(
+          children: <Widget>[
+            MiuixText(
+              Room.floorName(floor),
+              fontSize: 17,
+              fontWeight: FontWeight.w700,
+              color: c.onSurfaceContainer,
+            ),
+            const SizedBox(width: 8),
+            StatusTag('$count 间', color: c.onSurfaceVariantSummary),
+            const Spacer(),
+            AnimatedRotation(
+              turns: collapsed ? -0.25 : 0.25,
+              duration: const Duration(milliseconds: 220),
+              curve: Curves.easeOut,
+              child: Icon(
+                Icons.arrow_drop_down_rounded,
+                size: 28,
+                color: c.onSurfaceVariantSummary,
+              ),
+            ),
+          ],
+        ),
+      ),
     );
   }
 
@@ -186,7 +291,7 @@ class _RoomsPageState extends State<RoomsPage> {
             ),
             title: room.roomNo,
             summary:
-                '${room.isOccupied ? room.tenant : '空置中'} · ${room.roomType.isEmpty ? '未填房型' : room.roomType} · 租金 ¥${room.rent}',
+                '${room.isOccupied ? room.tenant : '空置中'} · ${room.roomType.isEmpty ? '未填房型' : room.roomType} · ${_rentSummary(room)}',
             endActions: <Widget>[
               Column(
                 crossAxisAlignment: CrossAxisAlignment.end,
@@ -256,6 +361,14 @@ class _RoomsPageState extends State<RoomsPage> {
     );
   }
 
+  /// 租金文案：随设置的房租周期变化（年付显示年总额，月付显示月租），
+  /// 与房间编辑页填写口径一致。
+  String _rentSummary(Room room) {
+    final int cycle = AppConfig.instance.rentCycle;
+    if (cycle <= 1) return '租金 ¥${room.rent}/月';
+    return '租金 ¥${room.rent * cycle}/${AppConfig.cycleUnit(cycle)}';
+  }
+
   //========================= 跳转 ============================
 
   void _openDetail(String roomNo) {
@@ -274,6 +387,11 @@ class _RoomsPageState extends State<RoomsPage> {
               builder: (BuildContext _) => const RoomEditPage()),
         )
         .then((_) => _load());
+  }
+
+  void _openCollectPanel() {
+    // 收款面板已是底部 Tab（3）：跨 Tab 直接切过去
+    AppShellScope.of(context).switchTab(3);
   }
 }
 

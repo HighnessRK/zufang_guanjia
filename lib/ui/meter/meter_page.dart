@@ -120,12 +120,8 @@ class _MeterPageState extends State<MeterPage> {
 
   //===================== 楼层分组 =====================
 
-  /// 楼层推导：房号去掉最后两位（101→1、1203→12）；不足三位归「—」
-  static String _floorOf(String roomNo) {
-    final String t = roomNo.trim();
-    if (t.length <= 2) return '—';
-    return t.substring(0, t.length - 2);
-  }
+  /// 楼层推导（口径统一收进 [Room.floorOf]，房间管理页共用）
+  static String _floorOf(String roomNo) => Room.floorOf(roomNo);
 
   /// 楼层 → 房间列表（楼层号升序，「—」最后；层内按房号排序）
   List<MapEntry<String, List<Room>>> _floors() {
@@ -204,7 +200,7 @@ class _MeterPageState extends State<MeterPage> {
         // 直达「大模型识别」配置页：重置设置 Tab 栈后压入，避免落在
         // 该 Tab 上次停留的旧二级页（如缴费统计）上
         AppShellScope.of(context)
-            .switchTabAndPush(3, const LlmSettingsPage());
+            .switchTabAndPush(4, const LlmSettingsPage());
       }
       return false;
     }

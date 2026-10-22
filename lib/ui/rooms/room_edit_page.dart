@@ -10,6 +10,10 @@ import '../../data/repository/person_repository.dart';
 import '../../data/repository/room_repository.dart';
 import '../widgets/app_widgets.dart';
 
+/// 编辑房间表单的标签列宽：按最长标签「实付（本周期）」对齐，
+/// 保证所有字段的输入框左边缘在同一竖线上（设置页风格整齐排布）。
+const double _kFieldLabelWidth = 112;
+
 /// 新增 / 编辑房间信息。
 class RoomEditPage extends StatefulWidget {
   const RoomEditPage({super.key, this.roomNo});
@@ -43,6 +47,16 @@ class _RoomEditPageState extends State<RoomEditPage> {
 
   bool _saving = false;
 
+  /// 房租缴费周期（与「设置 · 计费参数」同口径：1/3/6/12 个月）
+  int get _cycle => AppConfig.instance.rentCycle <= 0 ? 1 : AppConfig.instance.rentCycle;
+
+  /// 租金输入框单位后缀：元/月、元/季、元/半年、元/年
+  String get _cycleUnit => '元/${AppConfig.cycleUnit(_cycle)}';
+
+  /// 当前输入按周期折算出的月租（内部记账口径：应收 = 月租 × 周期月数）
+  int get _monthlyRent =>
+      (int.tryParse(_rent.text.trim()) ?? 0) ~/ _cycle;
+
   /// 周期累计水/电费（编辑模式，水收费结算区显示与结算用）
   int _waterFee = 0;
   int _elecFee = 0;
@@ -66,7 +80,13 @@ class _RoomEditPageState extends State<RoomEditPage> {
     _heater = TextEditingController();
     _fridge = TextEditingController();
     _washer = TextEditingController();
+    // 边输入边刷新「月租」换算小字（租金按设置周期口径展示）
+    _rent.addListener(_onRentChanged);
     _fill();
+  }
+
+  void _onRentChanged() {
+    if (mounted) setState(() {});
   }
 
   /// 编辑模式下把数据库里的值填进表单
@@ -75,7 +95,8 @@ class _RoomEditPageState extends State<RoomEditPage> {
     final Room? room = await RoomRepository.instance.byRoomNo(widget.roomNo!);
     if (room == null || !mounted) return;
     setState(() {
-      _rent.text = '${room.rent}';
+      // 租金按设置的周期口径展示（年付显示年金额），内部仍存月租
+      _rent.text = '${room.rent * _cycle}';
       _paid.text = '${room.paid}';
       _roomType.text = room.roomType;
       _tenant.text = room.tenant;
@@ -96,6 +117,7 @@ class _RoomEditPageState extends State<RoomEditPage> {
 
   @override
   void dispose() {
+    _rent.removeListener(_onRentChanged);
     _roomNo.dispose();
     _rent.dispose();
     _paid.dispose();
@@ -134,75 +156,106 @@ class _RoomEditPageState extends State<RoomEditPage> {
               20, padding.top + 8, 20, kGlassNavClearance + padding.bottom),
           children: <Widget>[
             const SectionTitle('基础信息', padding: EdgeInsets.zero),
-            AppTextField(
-              label: '房间号（如 101）',
+            AppLabelField(
+              label: '房间号',
+              hint: '如 101',
               controller: _roomNo,
               keyboardType: TextInputType.text,
+              labelWidth: _kFieldLabelWidth,
             ),
-            AppTextField(
-              label: '房型（如 一室一厅）',
+            _RoomTypeField(
               controller: _roomType,
+              labelWidth: _kFieldLabelWidth,
             ),
-            AppTextField(
-              label: '租金（元/月）',
+            AppLabelField(
+              label: '租金（$_cycleUnit）',
+              hint: '按设置周期计',
               controller: _rent,
               keyboardType: TextInputType.number,
+              labelWidth: _kFieldLabelWidth,
+              caption: '月租 ¥$_monthlyRent · 按「${AppConfig.cycleLabel(_cycle)}」口径填写'
+                  '（年付即填一年总额，内部按月租入账）',
             ),
-            AppTextField(
-              label: '实付（本周期已收房租，元）',
+            AppLabelField(
+              label: '实付（本周期）',
+              hint: '元',
               controller: _paid,
               keyboardType: TextInputType.number,
+              labelWidth: _kFieldLabelWidth,
             ),
-            AppTextField(
+            AppLabelField(
               label: '押金（元）',
+              hint: '退租时退还',
               controller: _deposit,
               keyboardType: TextInputType.number,
+              labelWidth: _kFieldLabelWidth,
             ),
             const SectionTitle('主租户信息'),
-            AppTextField(label: '主租户姓名', controller: _tenant),
-            AppTextField(
+            AppLabelField(
+              label: '主租户姓名',
+              hint: '承租人',
+              controller: _tenant,
+              labelWidth: _kFieldLabelWidth,
+            ),
+            AppLabelField(
               label: '身份证号',
+              hint: '选填',
               controller: _idCard,
               keyboardType: TextInputType.text,
+              labelWidth: _kFieldLabelWidth,
             ),
             _DateField(
-              label: '入住日期（yyyy-MM-dd）',
+              label: '入住日期',
+              hint: '点右侧图标选择',
               controller: _checkIn,
             ),
             _DateField(
-              label: '到期日期（yyyy-MM-dd）',
+              label: '到期日期',
+              hint: '点右侧图标选择',
               controller: _expire,
             ),
             const SectionTitle('配套与资产'),
-            AppTextField(
+            AppLabelField(
               label: '钥匙数量（把）',
+              hint: '0 = 无',
               controller: _keyCount,
               keyboardType: TextInputType.number,
+              labelWidth: _kFieldLabelWidth,
             ),
-            AppTextField(
-              label: '小豆豆 · 一楼大门磁卡（张）',
+            AppLabelField(
+              label: '大门磁卡（张）',
+              hint: '小豆豆 · 一楼',
               controller: _cardCount,
               keyboardType: TextInputType.number,
+              labelWidth: _kFieldLabelWidth,
             ),
-            AppTextField(
+            AppLabelField(
               label: '空调（台）',
+              hint: '0 = 无',
               controller: _ac,
               keyboardType: TextInputType.number,
+              labelWidth: _kFieldLabelWidth,
             ),
-            AppTextField(
+            AppLabelField(
               label: '热水器（台）',
+              hint: '0 = 无',
               controller: _heater,
               keyboardType: TextInputType.number,
+              labelWidth: _kFieldLabelWidth,
             ),
-            AppTextField(
+            AppLabelField(
               label: '冰箱（台）',
+              hint: '0 = 无',
               controller: _fridge,
               keyboardType: TextInputType.number,
+              labelWidth: _kFieldLabelWidth,
             ),
-            AppTextField(
+            AppLabelField(
               label: '洗衣机（台）',
+              hint: '0 = 无',
               controller: _washer,
               keyboardType: TextInputType.number,
+              labelWidth: _kFieldLabelWidth,
             ),
             if (_isEdit) ...<Widget>[
               const SectionTitle('水收费结算'),
@@ -332,9 +385,14 @@ class _RoomEditPageState extends State<RoomEditPage> {
 
     setState(() => _saving = true);
 
+    // 租金：按设置周期口径填写（年付填年总额）→ 换算成月租入表，
+    // 保证「应收 = 月租 × 周期月数」的账期引擎口径不变
+    final int cycleAmount = int.tryParse(_rent.text.trim()) ?? 0;
+    final int monthlyRent = _monthlyRent;
+
     final Room room = Room(
       roomNo: roomNo,
-      rent: int.tryParse(_rent.text.trim()) ?? 0,
+      rent: monthlyRent,
       paid: int.tryParse(_paid.text.trim()) ?? 0,
       roomType: _roomType.text.trim(),
       tenant: _tenant.text.trim(),
@@ -386,41 +444,193 @@ class _RoomEditPageState extends State<RoomEditPage> {
 
     if (!mounted) return;
     setState(() => _saving = false);
-    AppSnackbar.show('房间 $roomNo 已保存');
+    // 周期金额不是月数整数倍时会向下取整入账，明确告知避免「少了几块」的疑惑
+    final bool rounded = _cycle > 1 && cycleAmount % _cycle != 0;
+    AppSnackbar.show(rounded
+        ? '房间 $roomNo 已保存（按月租 ¥$monthlyRent 入账）'
+        : '房间 $roomNo 已保存');
     Navigator.of(context).pop();
   }
 }
 
-/// 日期输入框：可手填 yyyy-MM-dd，也可点右侧图标弹出系统日期选择器
+/// 日期字段：标签在左 + 可手填，点右侧日历图标弹出液态玻璃日期选择器。
 class _DateField extends StatelessWidget {
-  const _DateField({required this.label, required this.controller});
+  const _DateField({
+    required this.label,
+    required this.hint,
+    required this.controller,
+  });
 
   final String label;
+  final String hint;
   final TextEditingController controller;
 
   @override
   Widget build(BuildContext context) {
-    return AppTextField(
+    final MiuixColors c = MiuixTheme.of(context).colors;
+    return AppLabelField(
       label: label,
+      hint: hint,
       controller: controller,
       keyboardType: TextInputType.datetime,
+      labelWidth: _kFieldLabelWidth,
       trailingIcon: MiuixIconButton(
         onPressed: () => _pick(context),
-        child: const MiuixIcon(icon: Icons.calendar_month_rounded, size: 20),
+        child: MiuixIcon(
+          icon: Icons.calendar_month_rounded,
+          size: 20,
+          tint: c.onSurfaceVariantSummary,
+        ),
       ),
     );
   }
 
   Future<void> _pick(BuildContext context) async {
     final DateTime initial = DateUtil.parse(controller.text) ?? DateTime.now();
-    final DateTime? picked = await showDatePicker(
-      context: context,
+    final DateTime? picked = await showDatePickDialog(
+      context,
+      title: '选择日期',
       initialDate: initial,
       firstDate: DateTime(2000),
-      lastDate: DateTime(2100),
+      lastDate: DateTime(2100, 12, 31),
     );
     if (picked != null) {
       controller.text = DateUtil.format(picked);
+    }
+  }
+}
+
+/// 房型下拉框：固定预设（店面 / 单间 / 一室一厅 / 两室一厅）+「其他」可手输。
+/// 与其它字段同行左标签布局，右侧数值 + 下拉箭头，点按弹出选项。
+///
+/// 需要 StatefulWidget：选值后 controller.text 变化，占位提示「点击选择」
+/// 要随之让位（否则值与占位叠印）。用 controller 监听重建。
+class _RoomTypeField extends StatefulWidget {
+  const _RoomTypeField({
+    required this.controller,
+    required this.labelWidth,
+  });
+
+  final TextEditingController controller;
+  final double labelWidth;
+
+  /// 预设房型（顺序即展示顺序）
+  static const List<String> kPresets = <String>[
+    '店面',
+    '单间',
+    '一室一厅',
+    '两室一厅',
+    '其他',
+  ];
+
+  @override
+  State<_RoomTypeField> createState() => _RoomTypeFieldState();
+}
+
+class _RoomTypeFieldState extends State<_RoomTypeField> {
+  TextEditingController get controller => widget.controller;
+
+  @override
+  void initState() {
+    super.initState();
+    controller.addListener(_sync);
+  }
+
+  @override
+  void dispose() {
+    controller.removeListener(_sync);
+    super.dispose();
+  }
+
+  /// 值变化 → 重建，占位提示与当前值互斥显示
+  void _sync() {
+    if (mounted) setState(() {});
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final MiuixColors c = MiuixTheme.of(context).colors;
+    // 标签在框外左侧（与 AppLabelField 同布局），框内仅值 + 下拉箭头
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 12),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.center,
+        children: <Widget>[
+          Padding(
+            padding: const EdgeInsets.only(right: 10),
+            child: SizedBox(
+              width: widget.labelWidth,
+              child: MiuixText(
+                '房型',
+                fontSize: 14,
+                fontWeight: FontWeight.w600,
+                color: c.onSurfaceContainer,
+              ),
+            ),
+          ),
+          Expanded(
+            child: Stack(
+              children: <Widget>[
+                MiuixTextField(
+                  // 空值时以占位提示「点击选择」，有值后自动让位
+                  label: controller.text.isEmpty ? '点击选择' : '',
+                  useLabelAsPlaceholder: true,
+                  controller: controller,
+                  readOnly: true,
+                  singleLine: true,
+                  trailingIcon: MiuixIcon(
+                    icon: Icons.arrow_drop_down_rounded,
+                    size: 28,
+                    tint: c.onSurfaceVariantSummary,
+                  ),
+                ),
+                // 整框可点：弹出预设选项
+                Positioned.fill(
+                  child: GestureDetector(
+                    behavior: HitTestBehavior.translucent,
+                    onTap: () => _pick(context),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _pick(BuildContext context) async {
+    final String current = controller.text.trim();
+    const List<String> presets = _RoomTypeField.kPresets;
+    // 当前值不在预设里（历史手输值）时，临时补一项以显示勾选
+    final List<MapEntry<String, String>> options = <MapEntry<String, String>>[
+      for (final String p in presets) MapEntry<String, String>(p, p),
+      if (current.isNotEmpty && !presets.contains(current))
+        MapEntry<String, String>(current, '$current（自定义）'),
+    ];
+    final String? v = await showOptionPicker<String>(
+      context,
+      title: '选择房型',
+      current: current,
+      options: options,
+    );
+    if (v == null || !context.mounted) return;
+    if (v == '其他') {
+      // 其他 → 弹窗手输
+      final TextEditingController ctrl =
+          TextEditingController(text: current == '其他' ? '' : current);
+      final bool? ok = await showAppDialog(
+        context,
+        title: '自定义房型',
+        summary: '填写任意房型名称，如「阁楼」「loft」「商铺」',
+        content: AppTextField(label: '房型名称', controller: ctrl),
+      );
+      if (ok == true && ctrl.text.trim().isNotEmpty) {
+        controller.text = ctrl.text.trim();
+      }
+      ctrl.dispose();
+    } else {
+      controller.text = v;
     }
   }
 }

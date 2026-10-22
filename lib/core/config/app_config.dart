@@ -96,6 +96,21 @@ class AppConfig extends ChangeNotifier {
     return '$months 个月';
   }
 
+  /// 周期单位字（元/月、元/季…；房间编辑页租金标签随设置周期变化用）
+  static String cycleUnit(int months) {
+    switch (months) {
+      case 1:
+        return '月';
+      case 3:
+        return '季';
+      case 6:
+        return '半年';
+      case 12:
+        return '年';
+    }
+    return '$months 个月';
+  }
+
   /// 电费周期摘要（含智能模式说明）
   String get elecCycleLabel => elecCycle == 0 ? '智能（夏季月付·其余季付）' : cycleLabel(elecCycle);
 

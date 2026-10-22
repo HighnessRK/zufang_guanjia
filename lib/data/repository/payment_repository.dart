@@ -153,7 +153,34 @@ class PaymentRepository {
         lastP == null ? -1 : DateUtil.monthsBetween(lastP, now);
     // 到期判定：无历史（首次签约按整周期收）或已满一个周期
     final bool dueNow = lastP == null || elapsed >= cfg.rentCycle;
-    if (!dueNow) return; // 非收租月：本期不建房租流水
+    if (!dueNow) {
+      // 周期内非收租时点：把「实付」字段 / 收款面板录入的本周期实收
+      // （rooms.paid 绝对值）同步进最近一条未结清应收流水。此前这里直接
+      // return，周期内改实付、收款都不生效，欠款状态永远不变。
+      if (last != null && !last.isSettled && last.due > 0) {
+        final int paid = room.paid;
+        final bool settled = paid >= last.due;
+        if (last.paid != paid || last.isSettled != settled) {
+          await upsert(Payment(
+            roomNo: room.roomNo,
+            payType: AppConstants.payTypeRent,
+            period: last.period,
+            due: last.due,
+            paid: paid,
+            isSettled: settled,
+            payTime: settled
+                ? (last.payTime ?? DateUtil.formatDateTime(DateTime.now()))
+                : null,
+          ));
+        }
+        // 收满即清零实收：下一收租周期不把旧收款项当预收
+        if (settled && room.paid != 0) {
+          room.paid = 0;
+          await RoomRepository.instance.clearRentPaid(room.roomNo);
+        }
+      }
+      return; // 非收租月：本期不另建房租流水
+    }
 
     // 应收月数：首次按整周期；此后按实际经过月数（上限 120 个月防呆）
     final int months =
@@ -438,6 +465,26 @@ class PaymentRepository {
   /// 同步某房间的房租流水到当前周期口径（编辑页保存时调用）
   Future<void> syncRent(Room room) async {
     await _ensureRentCycle(room, DateUtil.currentPeriod, AppConfig.instance);
+  }
+
+  /// 收款面板「收房租」：[amount] 为本次收款额（增量）。
+  /// 以最近一条未结清应收流水的实收为基准累加（房间字段与流水在历史数据
+  /// 中可能不同步，以流水为准），写回 rooms.paid 后走同一账期引擎同步/结清。
+  Future<void> collectRent(String roomNo, int amount) async {
+    if (amount <= 0) return;
+    final Room? room = await RoomRepository.instance.byRoomNo(roomNo);
+    if (room == null) return;
+
+    // 基准：未结清房租流水的已收部分；无流水（周期内预收）则用 rooms.paid
+    int base = room.paid;
+    final Payment? unsettled = await latestUnsettled(
+        roomNo, AppConstants.payTypeRent);
+    if (unsettled != null) base = unsettled.paid;
+
+    final int paid = base + amount;
+    await RoomRepository.instance.setRentPaid(roomNo, paid);
+    room.paid = paid;
+    await syncRent(room);
   }
 
   //========================= 增删改查 =========================

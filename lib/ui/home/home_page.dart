@@ -397,6 +397,47 @@ class _HomePageState extends State<HomePage> {
               _buildNoticeRow(top[i], c),
               if (i != top.length - 1) const MiuixHorizontalDivider(),
             ],
+          // 收款入口：首页待办卡常驻，房租 / 水费 / 电费一处收齐
+          const MiuixHorizontalDivider(),
+          MiuixBasicComponent(
+            startAction: Container(
+              width: 34,
+              height: 34,
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                  colors: <Color>[
+                    c.primary,
+                    Color.lerp(c.primary, Colors.white, 0.45)!,
+                  ],
+                ),
+                borderRadius: BorderRadius.circular(10),
+                boxShadow: <BoxShadow>[
+                  BoxShadow(
+                    color: c.primary.withValues(alpha: 0.30),
+                    blurRadius: 8,
+                    offset: const Offset(0, 3),
+                  ),
+                ],
+              ),
+              child: const Icon(
+                Icons.account_balance_wallet_rounded,
+                size: 18,
+                color: Colors.white,
+              ),
+            ),
+            title: '收款',
+            summary: '房租 / 水费 / 电费 一处收齐',
+            endActions: <Widget>[
+              Icon(
+                Icons.chevron_right_rounded,
+                size: 22,
+                color: c.onSurfaceVariantSummary,
+              ),
+            ],
+            onClick: _openCollectPanel,
+          ),
           if (_notices.isNotEmpty) ...<Widget>[
             const MiuixHorizontalDivider(),
             MiuixBasicComponent(
@@ -494,7 +535,7 @@ class _HomePageState extends State<HomePage> {
     );
   }
 
-  /// 快捷入口（玻璃渐变图标）
+  /// 快捷入口（玻璃渐变图标；5 项等宽平铺，间距收窄避免 4 字标签换行）
   Widget _buildQuickEntries(MiuixColors c) {
     return Row(
       children: <Widget>[
@@ -504,21 +545,29 @@ class _HomePageState extends State<HomePage> {
           color: c.primary,
           onTap: _openAddRoom,
         ),
-        const SizedBox(width: 12),
+        const SizedBox(width: 8),
         QuickEntry(
           icon: Icons.speed_rounded,
           label: '水电抄表',
           color: const Color(0xFF34C759),
           onTap: _openMeter,
         ),
-        const SizedBox(width: 12),
+        const SizedBox(width: 8),
         QuickEntry(
           icon: Icons.receipt_long_rounded,
           label: '房间管理',
           color: const Color(0xFFAF52DE),
           onTap: _openRooms,
         ),
-        const SizedBox(width: 12),
+        const SizedBox(width: 8),
+        // 收款：与底部导航同序（抄表之后、设置之前）
+        QuickEntry(
+          icon: Icons.account_balance_wallet_rounded,
+          label: '收款',
+          color: const Color(0xFFFF9500),
+          onTap: _openCollectPanel,
+        ),
+        const SizedBox(width: 8),
         QuickEntry(
           icon: Icons.tune_rounded,
           label: '设置',
@@ -546,7 +595,10 @@ class _HomePageState extends State<HomePage> {
 
   void _openMeter() => AppShellScope.of(context).switchTab(2);
 
-  void _openSettings() => AppShellScope.of(context).switchTab(3);
+  /// 收款面板已是底部 Tab（3）：直接切过去，不再 push 二级页
+  void _openCollectPanel() => AppShellScope.of(context).switchTab(3);
+
+  void _openSettings() => AppShellScope.of(context).switchTab(4);
 
   void _openAddRoom() {
     Navigator.of(context)

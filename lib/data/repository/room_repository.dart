@@ -181,6 +181,18 @@ class RoomRepository {
     );
   }
 
+  /// 写入房租实收（收款面板 / 编辑页共用），随后调用
+  /// [PaymentRepository.collectRent] 同步流水并按需结清。
+  Future<void> setRentPaid(String roomNo, int paid) async {
+    final db = await DatabaseHelper.instance.database;
+    await db.update(
+      AppConstants.tableRooms,
+      <String, Object?>{'paid': paid},
+      where: 'room_no = ?',
+      whereArgs: <Object?>[roomNo],
+    );
+  }
+
   /// 结清一笔水/电费：该费累计清零 + 该表读数滚动为本期
   /// （下一周期从当前读数重新累计），合计字段同步重算。
   Future<void> settleUtility(String roomNo, String payType) async {

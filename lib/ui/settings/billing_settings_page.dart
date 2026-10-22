@@ -186,62 +186,19 @@ class _BillingSettingsPageState extends State<BillingSettingsPage> {
     );
   }
 
-  /// 通用单选弹窗（选项 → 值），点选即返回
+  /// 通用单选弹窗（选项 → 值）：委托给共享的 [showOptionPicker]，
+  /// 与房间编辑页「房型」选择为同一套 HyperOS 列表样式。
   Future<T?> _pickOption<T>(
     BuildContext context,
     String title,
     T current,
     List<MapEntry<T, String>> options,
   ) {
-    return showGeneralDialog<T>(
-      context: context,
-      barrierDismissible: true,
-      barrierLabel: 'dismiss',
-      barrierColor: Colors.transparent,
-      transitionDuration: const Duration(milliseconds: 220),
-      pageBuilder: (BuildContext ctx, Animation<double> a, Animation<double> b) {
-        final MiuixColors c = MiuixTheme.of(ctx).colors;
-        return MiuixOverlayDialog(
-          show: true,
-          renderInRootScaffold: false,
-          title: title,
-          onDismissRequest: () => Navigator.of(ctx).pop(),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: <Widget>[
-              for (int i = 0; i < options.length; i++) ...<Widget>[
-                if (i != 0) const MiuixHorizontalDivider(),
-                GestureDetector(
-                  behavior: HitTestBehavior.opaque,
-                  onTap: () => Navigator.of(ctx).pop(options[i].key),
-                  child: Padding(
-                    padding: const EdgeInsets.symmetric(vertical: 13),
-                    child: Row(
-                      children: <Widget>[
-                        Expanded(
-                          child: MiuixText(
-                            options[i].value,
-                            fontSize: 15,
-                            fontWeight: options[i].key == current
-                                ? FontWeight.w700
-                                : FontWeight.w400,
-                            color: options[i].key == current
-                                ? c.primary
-                                : c.onSurface,
-                          ),
-                        ),
-                        if (options[i].key == current)
-                          Icon(Icons.check_circle_rounded,
-                              size: 19, color: c.primary),
-                      ],
-                    ),
-                  ),
-                ),
-              ],
-            ],
-          ),
-        );
-      },
+    return showOptionPicker<T>(
+      context,
+      title: title,
+      current: current,
+      options: options,
     );
   }
 
@@ -273,14 +230,12 @@ class _BillingSettingsPageState extends State<BillingSettingsPage> {
     final AppConfig cfg = AppConfig.instance;
     final String cur =
         type == 'water' ? cfg.waterCollectDate : cfg.elecCollectDate;
-    final DateTime? picked = await showDatePicker(
-      context: context,
+    final DateTime? picked = await showDatePickDialog(
+      context,
+      title: type == 'water' ? '统一收水日期' : '统一收电日期',
       initialDate: DateUtil.parse(cur) ?? DateTime.now(),
       firstDate: DateTime(2020),
       lastDate: DateTime(2099, 12, 31),
-      helpText: type == 'water' ? '统一收水日期' : '统一收电日期',
-      cancelText: '取消',
-      confirmText: '确定',
     );
     if (picked == null || !mounted) return;
     final String text = DateUtil.format(picked);

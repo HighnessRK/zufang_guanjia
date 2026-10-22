@@ -3,6 +3,7 @@ import 'package:flutter/services.dart' show Clipboard, ClipboardData;
 import 'package:flutter_miuix/miuix.dart';
 import 'package:url_launcher/url_launcher.dart';
 
+import '../../core/config/app_config.dart';
 import '../../core/constants/app_constants.dart';
 import '../../core/utils/date_util.dart';
 import '../../data/models/payment.dart';
@@ -128,7 +129,7 @@ class _RoomDetailPageState extends State<RoomDetailPage> {
           const SizedBox(height: 10),
           InfoRow('房型', room.roomType),
           InfoRow('主租户', room.tenant),
-          InfoRow('租金', '¥${room.rent} / 月（本周期已付 ¥${room.paid}）'),
+          InfoRow('租金', _rentRowText(room)),
           InfoRow('押金', '¥${room.deposit}'),
           InfoRow('入住日期', room.checkIn ?? ''),
           InfoRow(
@@ -506,6 +507,18 @@ class _RoomDetailPageState extends State<RoomDetailPage> {
   void _copyPhone(String phone) {
     Clipboard.setData(ClipboardData(text: phone));
     AppSnackbar.show('电话号码已复制');
+  }
+
+  /// 租金文案：随设置的房租周期变化（年付显示年总额，月付显示月租），
+  /// 与房间编辑页填写口径一致。
+  String _rentRowText(Room room) {
+    final int cycle = AppConfig.instance.rentCycle;
+    final String unit = AppConfig.cycleUnit(cycle);
+    if (cycle <= 1) {
+      return '¥${room.rent} / 月（本周期已付 ¥${room.paid}）';
+    }
+    final int per = room.rent * cycle;
+    return '¥$per / $unit（月租 ¥${room.rent} · 本周期已付 ¥${room.paid}）';
   }
 
   void _editPerson(Person person) => _addPerson(person);

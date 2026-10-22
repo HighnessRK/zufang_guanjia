@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_miuix/miuix.dart';
 
 import '../../core/config/app_config.dart';
+import '../../core/utils/date_util.dart';
 
 /// 全局可复用的 UI 小组件与工具：分组标题、信息行、统计卡片、
 /// 空状态、HyperOS 风格确认弹窗、全局 Snackbar。
@@ -179,7 +180,7 @@ class QuickEntry extends StatelessWidget {
   Widget build(BuildContext context) {
     return Expanded(
       child: GlassCard(
-        padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 6),
+        padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 3),
         borderRadius: 20,
         onPressed: onTap,
         child: Column(
@@ -192,7 +193,14 @@ class QuickEntry extends StatelessWidget {
               radius: 12,
             ),
             const SizedBox(height: 8),
-            MiuixText(label, fontSize: 12),
+            // 单行不换行：5 项等宽平铺下 4 字标签保持一行
+            MiuixText(
+              label,
+              fontSize: 12,
+              maxLines: 1,
+              softWrap: false,
+              overflow: TextOverflow.fade,
+            ),
           ],
         ),
       ),
@@ -907,6 +915,235 @@ Future<bool?> showAppDialog(
   );
 }
 
+/// 通用单选弹窗（HyperOS 风格列表）：点选即返回所选值，取消返回 null。
+/// 计费周期 / 收水收电间隔 / 房型 等所有下拉选择项共用。
+Future<T?> showOptionPicker<T>(
+  BuildContext context, {
+  required String title,
+  String? summary,
+  required T current,
+  required List<MapEntry<T, String>> options,
+}) {
+  return showGeneralDialog<T>(
+    context: context,
+    barrierDismissible: true,
+    barrierLabel: 'dismiss',
+    barrierColor: Colors.transparent,
+    transitionDuration: const Duration(milliseconds: 220),
+    pageBuilder: (BuildContext ctx, Animation<double> a, Animation<double> b) {
+      final MiuixColors c = MiuixTheme.of(ctx).colors;
+      return MiuixOverlayDialog(
+        show: true,
+        renderInRootScaffold: false,
+        title: title,
+        summary: summary,
+        onDismissRequest: () => Navigator.of(ctx).pop(),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: <Widget>[
+            for (int i = 0; i < options.length; i++) ...<Widget>[
+              if (i != 0) const MiuixHorizontalDivider(),
+              GestureDetector(
+                behavior: HitTestBehavior.opaque,
+                onTap: () => Navigator.of(ctx).pop(options[i].key),
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 13),
+                  child: Row(
+                    children: <Widget>[
+                      Expanded(
+                        child: MiuixText(
+                          options[i].value,
+                          fontSize: 15,
+                          fontWeight: options[i].key == current
+                              ? FontWeight.w700
+                              : FontWeight.w400,
+                          color: options[i].key == current
+                              ? c.primary
+                              : c.onSurface,
+                        ),
+                      ),
+                      if (options[i].key == current)
+                        Icon(Icons.check_circle_rounded,
+                            size: 19, color: c.primary),
+                    ],
+                  ),
+                ),
+              ),
+            ],
+          ],
+        ),
+      );
+    },
+  );
+}
+
+/// HyperOS 风格日期选择弹窗（液态玻璃面板 + 身后极光透底 + miuix 月历）。
+///
+/// 替换 Material 的 showDatePicker：整块面板是液态玻璃卡（页面极光从身后
+/// 透上来），内部是澎湃OS 月历（月份切换 / 周名行 / 6×7 日期网格 / 选中态
+/// 主色圆块 / 今天描边），底部「取消 / 确定」与全 App 弹窗按钮一致。
+Future<DateTime?> showDatePickDialog(
+  BuildContext context, {
+  required String title,
+  DateTime? initialDate,
+  DateTime? firstDate,
+  DateTime? lastDate,
+}) {
+  return showGeneralDialog<DateTime>(
+    context: context,
+    barrierDismissible: true,
+    barrierLabel: 'dismiss',
+    barrierColor: Colors.transparent,
+    transitionDuration: const Duration(milliseconds: 220),
+    pageBuilder: (BuildContext ctx, Animation<double> a, Animation<double> b) =>
+        _DatePickDialog(
+      title: title,
+      initialDate: initialDate,
+      firstDate: firstDate ?? DateTime(1970),
+      lastDate: lastDate ?? DateTime(2100, 12, 31),
+    ),
+  );
+}
+
+class _DatePickDialog extends StatefulWidget {
+  const _DatePickDialog({
+    required this.title,
+    required this.initialDate,
+    required this.firstDate,
+    required this.lastDate,
+  });
+
+  final String title;
+  final DateTime? initialDate;
+  final DateTime firstDate;
+  final DateTime lastDate;
+
+  @override
+  State<_DatePickDialog> createState() => _DatePickDialogState();
+}
+
+class _DatePickDialogState extends State<_DatePickDialog> {
+  /// 当前选中日期（始终落在可选区间内）
+  late final DateTime _selected;
+
+  @override
+  void initState() {
+    super.initState();
+    DateTime d = widget.initialDate ?? DateTime.now();
+    if (d.isBefore(widget.firstDate)) d = widget.firstDate;
+    if (d.isAfter(widget.lastDate)) d = widget.lastDate;
+    _selected = DateTime(d.year, d.month, d.day);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final MiuixColors c = MiuixTheme.of(context).colors;
+    final MiuixDatePickerColors dc =
+        MiuixDatePickerColors.defaultColors(context);
+
+    return Material(
+      type: MaterialType.transparency,
+      child: Align(
+        alignment: Alignment.center,
+        child: Padding(
+          // 上下留出安全区，避免小屏被状态栏 / 手势条压住
+          padding: EdgeInsets.symmetric(
+            horizontal: 20,
+            vertical: MediaQuery.paddingOf(context).top + 16,
+          ),
+          child: ConstrainedBox(
+            constraints: BoxConstraints(
+              maxWidth: 420,
+              maxHeight: MediaQuery.sizeOf(context).height * 0.82,
+            ),
+            child: SingleChildScrollView(
+              child: GlassCard(
+                padding: const EdgeInsets.fromLTRB(18, 18, 18, 16),
+                borderRadius: 28,
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: <Widget>[
+                    // 标题 + 当前选中日期（含星期）
+                    Row(
+                      children: <Widget>[
+                        Expanded(
+                          child: MiuixText(
+                            widget.title,
+                            fontSize: 18,
+                            fontWeight: FontWeight.w700,
+                            color: c.onSurfaceContainer,
+                          ),
+                        ),
+                        MiuixText(
+                          _selectedLabel,
+                          fontSize: 13,
+                          fontWeight: FontWeight.w600,
+                          color: c.primary,
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 14),
+                    // 澎湃OS 月历：透明底，玻璃面板与极光从格子间透出
+                    MiuixDatePicker(
+                      initialDate: _selected,
+                      firstDate: widget.firstDate,
+                      lastDate: widget.lastDate,
+                      onDateChanged: (DateTime d) =>
+                          setState(() => _selected = d),
+                      colors: MiuixDatePickerColors(
+                        backgroundColor: Colors.transparent,
+                        headerColor: dc.headerColor,
+                        weekdayColor: dc.weekdayColor,
+                        weekendWeekdayColor: dc.weekendWeekdayColor,
+                        dayColor: dc.dayColor,
+                        weekendDayColor: dc.weekendDayColor,
+                        outOfMonthDayColor: dc.outOfMonthDayColor,
+                        selectedDayColor: dc.selectedDayColor,
+                        selectedDayTextColor: dc.selectedDayTextColor,
+                        todayBorderColor: dc.todayBorderColor,
+                        disabledDayColor: dc.disabledDayColor,
+                        navigationIconColor: dc.navigationIconColor,
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+                    Row(
+                      children: <Widget>[
+                        Expanded(
+                          child: MiuixTextButton(
+                            '取消',
+                            onPressed: () => Navigator.of(context).pop(),
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: GradientButton(
+                            label: '确定',
+                            onPressed: () =>
+                                Navigator.of(context).pop(_selected),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  /// 选中日期摘要：2026-10-22 · 周三
+  String get _selectedLabel {
+    const List<String> weeks = <String>[
+      '周一', '周二', '周三', '周四', '周五', '周六', '周日',
+    ];
+    return '${DateUtil.format(_selected)} · ${weeks[_selected.weekday - 1]}';
+  }
+}
+
 /// 表单输入框统一封装（HyperOS 风格文本框）
 ///
 /// 【占位提示修复】flutter_miuix 的 MiuixTextField 占位标签只随内部动画
@@ -991,6 +1228,141 @@ class _AppTextFieldState extends State<AppTextField> {
         leadingIcon: widget.leadingIcon,
         trailingIcon: widget.trailingIcon,
         useLabelAsPlaceholder: true,
+      ),
+    );
+  }
+}
+
+/// 【提示做成标签】左标签 + 右输入的输入框（同行左右分布）。
+///
+/// 编辑房间等长表单：文字框一旦输入内容，灰色占位提示就消失，这一栏是
+/// 什么全靠猜。这里把提示升级为框内左侧的常驻标签（HyperOS 设置页风格），
+/// 右侧才是输入区，填没填内容都能一眼看清字段含义。
+class AppLabelField extends StatefulWidget {
+  const AppLabelField({
+    super.key,
+    required this.label,
+    required this.controller,
+    this.hint,
+    this.keyboardType,
+    this.onChanged,
+    this.trailingIcon,
+    this.labelWidth = 92,
+    this.caption,
+    this.autofocus = false,
+  });
+
+  /// 左侧常驻标签（如「房间号」「押金」）
+  final String label;
+
+  final TextEditingController controller;
+
+  /// 右侧输入区的灰色占位（示例值 / 单位）
+  final String? hint;
+
+  final TextInputType? keyboardType;
+  final ValueChanged<String>? onChanged;
+
+  /// 右侧图标（如日历选择器）
+  final Widget? trailingIcon;
+
+  /// 标签列宽
+  final double labelWidth;
+
+  /// 框下方的灰色小字说明（如房租周期换算口径）
+  final String? caption;
+
+  final bool autofocus;
+
+  @override
+  State<AppLabelField> createState() => _AppLabelFieldState();
+}
+
+class _AppLabelFieldState extends State<AppLabelField> {
+  final FocusNode _focusNode = FocusNode();
+
+  bool _focus = false;
+
+  @override
+  void initState() {
+    super.initState();
+    widget.controller.addListener(_sync);
+    _focusNode.addListener(_sync);
+  }
+
+  @override
+  void didUpdateWidget(covariant AppLabelField old) {
+    super.didUpdateWidget(old);
+    if (!identical(old.controller, widget.controller)) {
+      old.controller.removeListener(_sync);
+      widget.controller.addListener(_sync);
+    }
+  }
+
+  @override
+  void dispose() {
+    widget.controller.removeListener(_sync);
+    _focusNode.dispose();
+    super.dispose();
+  }
+
+  /// 文字或焦点变化 → 重建（标签高亮 / 占位提示同步）
+  void _sync() {
+    if (!mounted) return;
+    setState(() => _focus = _focusNode.hasFocus);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final MiuixColors c = MiuixTheme.of(context).colors;
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 12),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: <Widget>[
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.center,
+            children: <Widget>[
+              // 标签在框外左侧，与输入框同行左右分布（不贴框、不遮内容）
+              Padding(
+                padding: const EdgeInsets.only(right: 10),
+                child: SizedBox(
+                  width: widget.labelWidth,
+                  child: MiuixText(
+                    widget.label,
+                    fontSize: 14,
+                    fontWeight: FontWeight.w600,
+                    color: _focus ? c.primary : c.onSurfaceContainer,
+                  ),
+                ),
+              ),
+              Expanded(
+                child: MiuixTextField(
+                  // 聚焦瞬间把占位传空 → 灰色提示立即消失，不与输入内容打架
+                  label: _focus ? '' : (widget.hint ?? ''),
+                  controller: widget.controller,
+                  focusNode: _focusNode,
+                  autofocus: widget.autofocus,
+                  keyboardType: widget.keyboardType,
+                  singleLine: true,
+                  onChanged: widget.onChanged,
+                  useLabelAsPlaceholder: true,
+                  trailingIcon: widget.trailingIcon,
+                ),
+              ),
+            ],
+          ),
+          if (widget.caption != null)
+            Padding(
+              // 与输入框左缘对齐（标签宽 + 间距）
+              padding: EdgeInsets.only(left: widget.labelWidth + 10, top: 5),
+              child: MiuixText(
+                widget.caption!,
+                fontSize: 11,
+                color: c.onSurfaceVariantSummary,
+              ),
+            ),
+        ],
       ),
     );
   }

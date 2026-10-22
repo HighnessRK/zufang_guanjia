@@ -155,6 +155,18 @@ class Room {
   /// 房租是否已缴清
   bool get isRentPaid => paid >= rent;
 
+  /// 楼层推导：房号去掉最后两位（101→1、1203→12）；不足三位归「—」。
+  /// 抄表页 / 房间管理页共用的分组口径。
+  static String floorOf(String roomNo) {
+    final String t = roomNo.trim();
+    if (t.length <= 2) return '—';
+    return t.substring(0, t.length - 2);
+  }
+
+  /// 楼层展示名：'—'（房号无数字的房间）显示为「其他房间」
+  static String floorName(String floor) =>
+      floor == '—' ? '其他房间' : '$floor 层';
+
   /// 配套家电汇总文案
   String get applianceText {
     final List<String> parts = <String>[];

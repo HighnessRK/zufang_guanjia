@@ -9,12 +9,13 @@ import '../../services/notification_service.dart';
 import '../../services/update_service.dart';
 import '../home/home_page.dart';
 import '../meter/meter_page.dart';
+import '../rooms/collect_panel_page.dart';
 import '../rooms/rooms_page.dart';
 import '../settings/settings_page.dart';
 import '../transitions.dart';
 import '../widgets/update_dialog.dart';
 
-/// 全局外壳：承载 4 个核心页面 + AndroidLiquidGlass 液态玻璃磨砂底部导航。
+/// 全局外壳：承载 5 个核心页面 + AndroidLiquidGlass 液态玻璃磨砂底部导航。
 ///
 /// 【关键设计】
 /// 1. 底部导航是「悬浮磨砂玻璃」材质，常驻在最上层，四个 Tab 与所有
@@ -111,16 +112,17 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
     PaintingBinding.instance.imageCache.clearLiveImages();
   }
 
-  /// 四个 Tab 各自的 Navigator key
+  /// 五个 Tab 各自的 Navigator key
   final List<GlobalKey<NavigatorState>> _navKeys =
       List<GlobalKey<NavigatorState>>.generate(
-          4, (int i) => GlobalKey<NavigatorState>());
+          5, (int i) => GlobalKey<NavigatorState>());
 
   /// Tab 对应的根页面
   late final List<Widget> _roots = <Widget>[
     const HomePage(),
     const RoomsPage(),
     const MeterPage(),
+    const CollectPanelPage(),
     const SettingsPage(),
   ];
 
@@ -130,6 +132,10 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
     LiquidGlassNavItem(
         id: 'rooms', icon: Icons.meeting_room_rounded, label: '房间'),
     LiquidGlassNavItem(id: 'meter', icon: Icons.speed_rounded, label: '抄表'),
+    LiquidGlassNavItem(
+        id: 'collect',
+        icon: Icons.account_balance_wallet_rounded,
+        label: '收款'),
     LiquidGlassNavItem(
         id: 'settings', icon: Icons.settings_rounded, label: '设置'),
   ];
@@ -325,7 +331,7 @@ class AppShellScope extends InheritedWidget {
     required super.child,
   });
 
-  /// 请求切换到底部 Tab（0 首页 / 1 房间 / 2 抄表 / 3 设置）
+  /// 请求切换到底部 Tab（0 首页 / 1 房间 / 2 抄表 / 3 收款 / 4 设置）
   final ValueChanged<int> switchTab;
 
   /// 切换到 Tab 并把 [page] 直接压到该 Tab 导航栈顶（先重置到根页）。

@@ -28,6 +28,14 @@ class AppChangelog {
 
   /// 全部版本（倒序：最新在最前）
   static const List<ChangelogVersion> versions = <ChangelogVersion>[
+    ChangelogVersion('1.0.5', '2026-10-22', <ChangelogEntry>[
+      ChangelogEntry('新增', '底部导航新增「收款」Tab：房租 / 水费 / 电费一处收齐，无需逐间进入详情'),
+      ChangelogEntry('新增', '房型下拉选择（店面 / 单间 / 一室一厅 / 两室一厅 / 其他可自定义）'),
+      ChangelogEntry('优化', '房间管理按楼层分组，楼层可折叠 / 展开，长列表更快定位'),
+      ChangelogEntry('优化', '房间编辑表单标签常驻在输入框左侧，输入内容后含义不再丢失'),
+      ChangelogEntry('优化', '房租金额统一按设置的缴费周期口径显示（年付显示年总额）'),
+      ChangelogEntry('优化', '日期选择器改为液态玻璃 + 极光 + 澎湃OS 月历样式，替换系统默认弹窗'),
+    ]),
     ChangelogVersion('1.0.4', '2026-10-22', <ChangelogEntry>[
       ChangelogEntry('修复', '「关于」页「更新」卡片顶部多余的细分隔线'),
       ChangelogEntry('修复', '应用内更新源 GitHub 仓库地址修正，检查更新可正常连通'),
