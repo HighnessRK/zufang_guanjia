@@ -7,6 +7,7 @@ import '../../core/constants/app_constants.dart';
 import '../../data/models/room.dart';
 import '../../data/repository/payment_repository.dart';
 import '../../data/repository/room_repository.dart';
+import '../../services/data_bus.dart';
 import '../shell/app_shell.dart';
 import '../widgets/app_widgets.dart';
 
@@ -53,6 +54,8 @@ class _CollectPanelPageState extends State<CollectPanelPage> {
   void initState() {
     super.initState();
     _load();
+    // MCP / 其它入口改收款后立刻刷新（本页无输入框，可放心重建）
+    DataBus.instance.addListener(_onDataBus);
   }
 
   @override
@@ -68,6 +71,7 @@ class _CollectPanelPageState extends State<CollectPanelPage> {
 
   @override
   void dispose() {
+    DataBus.instance.removeListener(_onDataBus);
     _tabIndex?.removeListener(_onTabChanged);
     super.dispose();
   }
@@ -75,6 +79,11 @@ class _CollectPanelPageState extends State<CollectPanelPage> {
   /// 从其它 Tab 切回收款页时重新拉取（别处收款/编辑会改变欠款）
   void _onTabChanged() {
     if (_tabIndex?.value == _tab && mounted) _load();
+  }
+
+  /// MCP 写操作（收款 / 改房 / 改设置）→ 欠款立即重算
+  void _onDataBus() {
+    if (mounted) _load();
   }
 
   Future<void> _load() async {

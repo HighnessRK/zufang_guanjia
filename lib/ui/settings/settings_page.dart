@@ -10,6 +10,7 @@ import 'billing_settings_page.dart';
 import 'data_settings_page.dart';
 import 'lab_page.dart';
 import 'llm_settings_page.dart';
+import 'mcp_settings_page.dart';
 import 'notify_settings_page.dart';
 import 'update_settings_page.dart';
 
@@ -75,6 +76,12 @@ class _SettingsPageState extends State<SettingsPage> {
                       title: '大模型识别',
                       summary: '拍照识别配置',
                       onClick: () => _push(const LlmSettingsPage()),
+                    ),
+                    const MiuixHorizontalDivider(),
+                    MiuixArrowPreference(
+                      title: 'MCP Server',
+                      summary: 'AI 助手全流程接入',
+                      onClick: () => _push(const McpSettingsPage()),
                     ),
                   ],
                 ),

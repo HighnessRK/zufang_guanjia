@@ -162,6 +162,11 @@ class AppConfig extends ChangeNotifier {
   /// 关闭时不认领边缘手势 → 走系统经典返回，无跟手动画。
   bool predictiveBack = false;
 
+  /// MCP Server 开关：开启后在 8765 端口提供 Streamable HTTP 服务，
+  /// AI 助手（Claude / ChatGPT / 任意 MCP 客户端）可通过局域网全流程
+  /// 查询与修改本 APP 的房间、租户、收款、抄表与设置。默认开启。
+  bool mcpEnabled = true;
+
   //========================= 路径 ============================
 
   /// info.gwt 实际读写路径
@@ -242,6 +247,7 @@ class AppConfig extends ChangeNotifier {
     updateNotify = map['update_notify'] != '0';
     updatePromptedVersion = map['update_prompted_version'] ?? '';
     predictiveBack = map['predictive_back'] == '1';
+    mcpEnabled = map['mcp_enabled'] != '0';
 
     // 数据合法性兜底：单价与天数不允许为负
     if (waterPrice < 0) waterPrice = 6.0;
@@ -320,6 +326,10 @@ class AppConfig extends ChangeNotifier {
       ..writeln('update_prompted_version=$updatePromptedVersion')
       ..writeln('predictive_back=${predictiveBack ? 1 : 0}')
       ..writeln()
+      ..writeln('#—— MCP Server（AI 助手接入）———')
+      ..writeln('# 1=开启 0=关闭；开启后局域网内 AI 可全流程读写本 APP 数据')
+      ..writeln('mcp_enabled=${mcpEnabled ? 1 : 0}')
+      ..writeln()
       ..writeln('#—— 运行期数据 ———')
       ..writeln('notice_read_ids=$noticeReadIds');
 
@@ -353,6 +363,7 @@ class AppConfig extends ChangeNotifier {
     bool? updateNotify,
     String? updatePromptedVersion,
     bool? predictiveBack,
+    bool? mcpEnabled,
   }) async {
     this.waterPrice = waterPrice ?? this.waterPrice;
     this.elecPrice = elecPrice ?? this.elecPrice;
@@ -379,6 +390,7 @@ class AppConfig extends ChangeNotifier {
     this.updatePromptedVersion =
         updatePromptedVersion ?? this.updatePromptedVersion;
     this.predictiveBack = predictiveBack ?? this.predictiveBack;
+    this.mcpEnabled = mcpEnabled ?? this.mcpEnabled;
     await save();
   }
 

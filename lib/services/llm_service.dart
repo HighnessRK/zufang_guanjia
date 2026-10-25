@@ -5,17 +5,6 @@ import 'package:flutter/foundation.dart';
 
 import '../core/config/app_config.dart';
 
-/// 识别到的一块电表：读数 + 照片中看到的标识（房号 / 表号 / 位置文字）。
-class MeterReading {
-  const MeterReading({required this.label, required this.reading});
-
-  /// 照片中该电表旁的标识文字（房号 / 表号 / 位置），可能为空
-  final String label;
-
-  /// 表盘读数
-  final int reading;
-}
-
 /// 大模型视觉识别服务：把电表照片发送到 OpenAI 兼容接口识别读数。
 ///
 /// 【隐私边界】只在用户主动点「拍照识别」时发送当前这一张照片，
@@ -45,41 +34,60 @@ class LlmService {
     return int.parse(match.group(0)!);
   }
 
-  /// 整层批量识别：一次识别照片中的多块电表，按出现顺序返回全部读数与标识。
-  /// [roomNos] 为本层房间号，用于提示模型优先摘录对应标识。
-  static Future<List<MeterReading>> recognizeFloorElecMeters(
+  /// 整层批量识别：**按位置顺序**读出照片里每块电表的读数。
+  ///
+  /// 【内置提示词】电表箱里表的排布是「按行、从左到右、从上到下」，
+  /// 与本层房间号升序一一对应（4 块表 → x01、x02、x03、x05；
+  /// 5 块表 → x01、x02、x03、x05、x06 —— 房号里不含 04，跳过它）。
+  /// 因此这里不再让模型猜表旁的文字标识，而是把预期房间号列表直接写进
+  /// 提示词，要求模型**按同样的空间顺序**只吐一个数字数组。
+  ///
+  /// [roomNos] 必须是本层已按房号升序排好的房间号。
+  /// 返回与 [roomNos] 等长（或更短，模型漏读时）的读数列表。
+  static Future<List<int>> recognizeFloorMeterReadings(
     Uint8List imageBytes, {
     required List<String> roomNos,
   }) async {
     final AppConfig cfg = _requireVisionConfig();
     final String text = await _chatVision(
       cfg,
-      prompt: '这是一张楼房电表照片，可能包含多块电表。'
-          '本层房间号：${roomNos.join('、')}。'
-          '请逐块识别每块电表当前的数字读数；若表盘旁贴有房号、表号或'
-          '位置标识，请一并摘录。严格只输出一个 JSON 数组，不要输出'
-          '任何其他文字、解释或代码块标记，格式：'
-          '[{"label":"101","reading":12345},{"label":"102","reading":23456}]',
+      prompt: '这是一张楼房电表箱照片，里面有多块电表，安装排布规律为：'
+          '按行排列，每一行内从左到右，逐行从上到下。\n'
+          '本层房间号（已按这个顺序排好）：${roomNos.join('、')}。\n'
+          '请按同样的空间顺序（每行从左到右、行与行从上到下）逐块读取'
+          '每块电表表盘上的数字读数，第 n 个数字对应第 n 个房间号。\n'
+          '只输出一个 JSON 数字数组，元素个数与看到的电表块数一致，'
+          '不要任何其他文字、解释或代码块标记，例如：'
+          '[24737,35298,11111,21466]',
       imageBytes: imageBytes,
-      maxTokens: 768,
+      maxTokens: 512,
     );
 
     final Match? m = RegExp(r'\[[\s\S]*?\]').firstMatch(text);
     if (m == null) {
       throw FormatException('未识别到电表读数（返回：${_snippet(text)}）');
     }
-    final Object? decoded = jsonDecode(m.group(0)!);
+    final Object? decoded;
+    try {
+      decoded = jsonDecode(m.group(0)!);
+    } catch (_) {
+      throw FormatException('识别结果不是 JSON 数组（返回：${_snippet(text)}）');
+    }
     if (decoded is! List<dynamic>) {
       throw FormatException('识别结果不是 JSON 数组（返回：${_snippet(text)}）');
     }
-    final List<MeterReading> out = <MeterReading>[];
+    final List<int> out = <int>[];
     for (final Object? e in decoded) {
-      if (e is! Map<String, dynamic>) continue;
-      final int? reading = _toInt(e['reading']);
-      if (reading == null || reading < 0) continue;
-      out.add(MeterReading(label: '${e['label'] ?? ''}', reading: reading));
+      final int? reading = _toInt(e);
+      if (reading == null || reading < 0) {
+        // 数组里混入非数字（模型偶发输出 null / 字符串）→ 用 -1 占位，
+        // 保住「下标 ↔ 房间号」的对位关系，调用方据此跳过该格
+        out.add(-1);
+        continue;
+      }
+      out.add(reading);
     }
-    if (out.isEmpty) {
+    if (out.every((int v) => v < 0)) {
       throw FormatException('未解析出有效读数（返回：${_snippet(text)}）');
     }
     return out;

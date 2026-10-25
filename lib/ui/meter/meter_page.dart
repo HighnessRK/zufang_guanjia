@@ -1,4 +1,4 @@
-﻿import 'package:flutter/material.dart';
+import 'package:flutter/material.dart';
 import 'package:flutter_miuix/miuix.dart';
 import 'package:image_picker/image_picker.dart';
 
@@ -8,6 +8,7 @@ import '../../core/utils/date_util.dart';
 import '../../data/models/room.dart';
 import '../../data/repository/payment_repository.dart';
 import '../../data/repository/room_repository.dart';
+import '../../services/data_bus.dart';
 import '../../services/llm_service.dart';
 import '../settings/llm_settings_page.dart';
 import '../shell/app_shell.dart';
@@ -53,10 +54,6 @@ class _MeterPageState extends State<MeterPage> {
   /// 正在单房间识别的房号（置灰该行相机按钮）
   String? _recognizingRoom;
 
-  /// 整层拍电表：AI 识别结果核对表单（非空时弹出）
-  List<MeterReading>? _pendingReadings;
-  String? _pendingFloor;
-
   /// 整层录水表批量输入表单
   bool _waterSheetVisible = false;
   String? _waterSheetFloor;
@@ -67,10 +64,13 @@ class _MeterPageState extends State<MeterPage> {
   void initState() {
     super.initState();
     _load();
+    // MCP / 其它入口改动读数后立刻刷新（详见 [DataBus]）
+    DataBus.instance.addListener(_onDataBus);
   }
 
   @override
   void dispose() {
+    DataBus.instance.removeListener(_onDataBus);
     for (final TextEditingController c in _elecCtrls.values) {
       c.dispose();
     }
@@ -78,6 +78,17 @@ class _MeterPageState extends State<MeterPage> {
       c.dispose();
     }
     super.dispose();
+  }
+
+  /// MCP 写操作 → 读数与待收立即重算。
+  ///
+  /// 【保护未保存输入】本页是「边录边存草稿」模式，用户可能已改了读数
+  /// 还没点保存。此时若被外部改动冲掉，比不刷新更糟（DataBus 只在焦点
+  /// 落在输入框时才拦截）。所以有未保存修改时直接跳过本次刷新。
+  void _onDataBus() {
+    if (!mounted) return;
+    if (_changeCount() > 0) return;
+    _load();
   }
 
   Future<void> _load() async {
@@ -209,16 +220,30 @@ class _MeterPageState extends State<MeterPage> {
 
   //===================== 单房间电表拍照（保留） =====================
 
+  /// 取一张电表照片：先问来源（拍照 / 相册），再交给 image_picker。
+  /// 相册路径走系统照片选择器（Photo Picker），全程不申请存储权限。
+  Future<XFile?> _pickImage(int maxWidth, int imageQuality) async {
+    final AppImageSource? source = await showImageSourceDialog(
+      context,
+      title: '电表照片来源',
+      summary: '拍照现拍，或从相册选一张已有的电表照片交给 AI 识别',
+    );
+    if (source == null) return null;
+    return ImagePicker().pickImage(
+      source: source == AppImageSource.gallery
+          ? ImageSource.gallery
+          : ImageSource.camera,
+      maxWidth: maxWidth.toDouble(),
+      imageQuality: imageQuality,
+    );
+  }
+
   Future<void> _captureRoomElec(Room room) async {
     if (!await _ensureLlmConfig()) return;
     if (_recognizing) return;
 
     try {
-      final XFile? shot = await ImagePicker().pickImage(
-        source: ImageSource.camera,
-        maxWidth: 1440,
-        imageQuality: 85,
-      );
+      final XFile? shot = await _pickImage(1440, 85);
       if (shot == null) return; // 用户取消拍照
 
       setState(() {
@@ -249,19 +274,27 @@ class _MeterPageState extends State<MeterPage> {
     }
   }
 
-  //===================== 整层批量拍电表（AI 统一识别） =====================
+  //===================== 整层批量拍电表（AI 按位置识别） =====================
 
+  /// 整层拍电表：内置位置序提示词识别 → **自动填入**本层输入框。
+  ///
+  /// 【映射规则】电表按「每行从左到右、行与行从上到下」排布，与本层
+  /// 房间号升序一一对应（4 块表 → x01/x02/x03/x05，5 块表 →
+  /// x01/x02/x03/x05/x06，房号本就没有 04 所以天然跳过）。
+  /// 模型返回的第 n 个读数直接落到第 n 个房间，不再弹核对表单。
   Future<void> _captureFloorElec(String floor) async {
     if (!await _ensureLlmConfig()) return;
     if (_recognizing) return;
 
     final List<Room> rooms = _roomsOf(floor);
+    if (rooms.isEmpty) {
+      AppSnackbar.show('本层没有房间，无法填入');
+      return;
+    }
+    final List<String> roomNos = rooms.map((Room r) => r.roomNo).toList();
+
     try {
-      final XFile? shot = await ImagePicker().pickImage(
-        source: ImageSource.camera,
-        maxWidth: 1920,
-        imageQuality: 88,
-      );
+      final XFile? shot = await _pickImage(1920, 88);
       if (shot == null) return;
 
       setState(() {
@@ -271,17 +304,48 @@ class _MeterPageState extends State<MeterPage> {
       AppSnackbar.show('大模型正在识别本层电表…');
 
       final bytes = await shot.readAsBytes();
-      final List<MeterReading> readings =
-          await LlmService.recognizeFloorElecMeters(
+      final List<int> readings =
+          await LlmService.recognizeFloorMeterReadings(
         bytes,
-        roomNos: rooms.map((Room r) => r.roomNo).toList(),
+        roomNos: roomNos,
       );
 
       if (!mounted) return;
+
+      // 按下标对位填入：读数 < 0 表示该格模型没读出来，跳过
+      final List<String> filled = <String>[];
+      int changed = 0;
       setState(() {
-        _pendingReadings = readings;
-        _pendingFloor = floor;
+        final int n = readings.length < roomNos.length
+            ? readings.length
+            : roomNos.length;
+        for (int i = 0; i < n; i++) {
+          final int v = readings[i];
+          if (v < 0) continue;
+          final String roomNo = roomNos[i];
+          final TextEditingController? ctrl = _elecCtrls[roomNo];
+          if (ctrl == null) continue;
+          if (ctrl.text.trim() != '$v') changed++;
+          ctrl.text = '$v';
+          filled.add('$roomNo→$v');
+        }
       });
+
+      final String summary = filled.isEmpty ? '（无有效读数）' : filled.join(' ');
+      if (filled.isEmpty) {
+        AppSnackbar.show('未能读出任何有效读数，请重拍或换个角度');
+      } else if (changed == 0) {
+        AppSnackbar.show('识别值与当前输入一致，没有变化：$summary');
+      } else if (readings.length != roomNos.length) {
+        AppSnackbar.show(
+            '识别到 ${readings.length} 块表，本层有 ${roomNos.length} 间房，'
+            '已按位置顺序填入 ${filled.length} 间（其中 $changed 间有变化）：'
+            '$summary，请核对');
+      } else {
+        AppSnackbar.show(
+            '已按位置顺序填入 ${filled.length} 间（其中 $changed 间有变化），'
+            '请核对后保存：$summary');
+      }
     } on StateError catch (e) {
       AppSnackbar.show(e.message);
     } catch (e) {
@@ -442,45 +506,6 @@ class _MeterPageState extends State<MeterPage> {
                     ),
                   ],
                 ],
-              ),
-            ),
-
-            //=============== 整层拍电表：AI 结果核对表单 ===============
-            // vendor 弹层需常驻挂载 + show 切换：条件卸载会触发其
-            // 「deactivated 期间查 InheritedWidget」断言（实测踩坑）
-            MiuixOverlayBottomSheet(
-              show: _pendingReadings != null,
-              title: '核对 ${_floorName(_pendingFloor)} · 电表识别结果',
-              onDismissRequest: () => setState(() => _pendingReadings = null),
-              content: SizedBox(
-                height: 470,
-                child: _pendingReadings == null
-                    ? const SizedBox.shrink()
-                    : _ElecAssignSheet(
-                        key: ValueKey<String>('elec_${_pendingFloor ?? ''}'),
-                        readings: _pendingReadings!,
-                        rooms: _roomsOf(_pendingFloor ?? ''),
-                        onConfirm: (Map<String, int> assignments) {
-                          // 只统计与当前值不同的房间（AI 识别值未变不算填入）
-                          int changed = 0;
-                          setState(() {
-                            assignments.forEach((String roomNo, int v) {
-                              if ((_elecCtrls[roomNo]?.text.trim() ?? '') !=
-                                  '$v') {
-                                changed++;
-                              }
-                              _elecCtrls[roomNo]?.text = '$v';
-                            });
-                            _pendingReadings = null;
-                          });
-                          if (changed == 0) {
-                            AppSnackbar.show('识别值与当前输入一致，没有变化');
-                          } else {
-                            AppSnackbar.show(
-                                '已填入 $changed 块电表读数，请核对后保存');
-                          }
-                        },
-                      ),
               ),
             ),
 
@@ -847,168 +872,6 @@ class _MeterPageState extends State<MeterPage> {
             )
           : const Icon(Icons.photo_camera_rounded,
               size: 19, color: Color(0xFF3482FF)),
-    );
-  }
-}
-
-//===================== 整层拍电表：AI 结果核对表单 ======================
-
-/// 每条识别结果一行：读数 + 标识 + 房间改派下拉（可忽略）。
-class _ElecAssignSheet extends StatefulWidget {
-  const _ElecAssignSheet({
-    super.key,
-    required this.readings,
-    required this.rooms,
-    required this.onConfirm,
-  });
-
-  final List<MeterReading> readings;
-  final List<Room> rooms;
-  final void Function(Map<String, int>) onConfirm;
-
-  @override
-  State<_ElecAssignSheet> createState() => _ElecAssignSheetState();
-}
-
-class _ElecAssignSheetState extends State<_ElecAssignSheet> {
-  static const String _skip = '__忽略__';
-
-  /// 与 readings 等长：房间号或 null（忽略）
-  late final List<String?> _assign;
-
-  @override
-  void initState() {
-    super.initState();
-    _assign = List<String?>.filled(widget.readings.length, null);
-
-    // 第一轮：标识含房号的优先匹配
-    final List<Room> remaining = List<Room>.of(widget.rooms);
-    for (int i = 0; i < widget.readings.length; i++) {
-      final String label = widget.readings[i].label;
-      if (label.isEmpty) continue;
-      for (final Room room in List<Room>.of(remaining)) {
-        if (label.contains(room.roomNo)) {
-          _assign[i] = room.roomNo;
-          remaining.remove(room);
-          break;
-        }
-      }
-    }
-    // 第二轮：剩余结果按出现顺序分配给剩余房间
-    for (int i = 0; i < widget.readings.length; i++) {
-      if (remaining.isEmpty) break;
-      if (_assign[i] != null) continue;
-      _assign[i] = remaining.first.roomNo;
-      remaining.removeAt(0);
-    }
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final MiuixColors c = MiuixTheme.of(context).colors;
-    return Padding(
-      // 底部避让悬浮玻璃导航条，保证确认按钮不被遮挡
-      padding: const EdgeInsets.only(bottom: kGlassNavClearance),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: <Widget>[
-          MiuixText(
-            '识别到 ${widget.readings.length} 块电表，已按房号 / 顺序自动匹配，请核对后填入：',
-          fontSize: 12,
-          height: 1.5,
-          color: c.onSurfaceVariantSummary,
-        ),
-        const SizedBox(height: 6),
-        Expanded(
-          child: ListView(
-            children: <Widget>[
-              for (int i = 0; i < widget.readings.length; i++)
-                Padding(
-                  padding: const EdgeInsets.symmetric(vertical: 6),
-                  child: Row(
-                    children: <Widget>[
-                      Container(
-                        padding: const EdgeInsets.symmetric(
-                            horizontal: 8, vertical: 4),
-                        decoration: BoxDecoration(
-                          color: c.primary.withValues(alpha: 0.10),
-                          borderRadius: BorderRadius.circular(9),
-                        ),
-                        child: MiuixText(
-                          '${widget.readings[i].reading}',
-                          fontSize: 15,
-                          fontWeight: FontWeight.w700,
-                          color: c.primary,
-                        ),
-                      ),
-                      const SizedBox(width: 8),
-                      Expanded(
-                        child: MiuixText(
-                          widget.readings[i].label.isEmpty
-                              ? '（无标识）'
-                              : '标识：${widget.readings[i].label}',
-                          fontSize: 11,
-                          color: c.onSurfaceVariantSummary,
-                        ),
-                      ),
-                      const SizedBox(width: 6),
-                      DropdownButton<String>(
-                        value: _assign[i] ?? _skip,
-                        isDense: true,
-                        underline: const SizedBox.shrink(),
-                        dropdownColor: c.surface,
-                        style: TextStyle(
-                          fontSize: 13,
-                          color: c.onSurface,
-                          fontWeight: FontWeight.w600,
-                        ),
-                        items: <DropdownMenuItem<String>>[
-                          const DropdownMenuItem<String>(
-                            value: _skip,
-                            child: MiuixText('忽略', fontSize: 13),
-                          ),
-                          for (final Room room in widget.rooms)
-                            DropdownMenuItem<String>(
-                              value: room.roomNo,
-                              child: MiuixText(room.roomNo, fontSize: 13),
-                            ),
-                        ],
-                        onChanged: (String? v) => setState(() {
-                          if (v == null || v == _skip) {
-                            _assign[i] = null;
-                            return;
-                          }
-                          // 互斥：同一房间只允许一条结果
-                          for (int j = 0; j < _assign.length; j++) {
-                            if (j != i && _assign[j] == v) {
-                              _assign[j] = null;
-                            }
-                          }
-                          _assign[i] = v;
-                        }),
-                      ),
-                    ],
-                  ),
-                ),
-            ],
-          ),
-        ),
-        const SizedBox(height: 8),
-        GradientButton(
-          label: '填入本层输入框',
-          icon: Icons.download_rounded,
-          onPressed: () {
-            final Map<String, int> result = <String, int>{};
-            for (int i = 0; i < _assign.length; i++) {
-              final String? roomNo = _assign[i];
-              if (roomNo == null) continue;
-              result[roomNo] = widget.readings[i].reading;
-            }
-            widget.onConfirm(result);
-          },
-        ),
-        ],
-      ),
     );
   }
 }

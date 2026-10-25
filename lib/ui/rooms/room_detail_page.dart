@@ -13,6 +13,7 @@ import '../../data/models/room.dart';
 import '../../data/repository/payment_repository.dart';
 import '../../data/repository/person_repository.dart';
 import '../../data/repository/room_repository.dart';
+import '../../services/data_bus.dart';
 import '../transitions.dart';
 import '../widgets/app_widgets.dart';
 import 'room_edit_page.dart';
@@ -37,6 +38,19 @@ class _RoomDetailPageState extends State<RoomDetailPage> {
   void initState() {
     super.initState();
     _load();
+    // MCP / 其它入口改了本房间数据 → 详情与流水立即重算（详见 [DataBus]）
+    DataBus.instance.addListener(_onDataBus);
+  }
+
+  @override
+  void dispose() {
+    DataBus.instance.removeListener(_onDataBus);
+    super.dispose();
+  }
+
+  /// MCP 写操作 → 重新拉取本房间（房间 / 租户 / 流水）
+  void _onDataBus() {
+    if (mounted) _load();
   }
 
   Future<void> _load() async {
@@ -211,42 +225,125 @@ class _RoomDetailPageState extends State<RoomDetailPage> {
             )
           else
             for (int i = 0; i < _people.length; i++) ...<Widget>[
-              MiuixBasicComponent(
-                startAction: MiuixIcon(
-                  icon: Icons.person_rounded,
-                  tint: _people[i].isPrimary ? c.primary : null,
-                ),
-                title: _people[i].name,
-                summary: _people[i].phone,
-                endActions: <Widget>[
-                  if (_people[i].isPrimary)
-                    StatusTag('主租户', color: c.primary),
-                  if (_people[i].phone.isNotEmpty) ...<Widget>[
-                    MiuixIconButton(
-                      onPressed: () => _callPhone(_people[i].phone),
-                      child:
-                          const MiuixIcon(icon: Icons.call_rounded, size: 18),
-                    ),
-                    MiuixIconButton(
-                      onPressed: () => _copyPhone(_people[i].phone),
-                      child:
-                          const MiuixIcon(icon: Icons.copy_rounded, size: 18),
-                    ),
-                  ],
-                  MiuixIconButton(
-                    onPressed: () => _editPerson(_people[i]),
-                    child: const MiuixIcon(icon: Icons.edit_rounded, size: 18),
-                  ),
-                  MiuixIconButton(
-                    onPressed: () => _deletePerson(_people[i]),
-                    child: const MiuixIcon(
-                        icon: Icons.delete_outline_rounded, size: 18),
-                  ),
-                ],
-              ),
+              _buildPersonRow(_people[i], c),
               if (i != _people.length - 1) const MiuixHorizontalDivider(),
             ],
         ],
+      ),
+    );
+  }
+
+  /// 租户行：两行布局 + 右侧紧凑操作按钮。
+  ///
+  /// 【为什么不用 MiuixBasicComponent】title / summary 与 endActions 挤在
+  /// 同一行，电话略长 + 四个按钮（拨打 / 复制 / 编辑 / 删除）就会把最右的
+  /// 删除按钮顶出屏幕（实测 201 房租户行被右边缘裁切）。改成自定义两行：
+  /// 姓名 + 主租户标签独占第一行，电话独占第二行（都超长省略号截断），
+  /// 四个 30px 紧凑按钮固定在右侧，宽度永远够用。
+  Widget _buildPersonRow(Person p, MiuixColors c) {
+    final bool hasPhone = p.phone.isNotEmpty;
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(18, 9, 8, 9),
+      child: Row(
+        children: <Widget>[
+          MiuixIcon(
+            icon: Icons.person_rounded,
+            size: 21,
+            tint: p.isPrimary ? c.primary : c.onSurfaceVariantSummary,
+          ),
+          const SizedBox(width: 11),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: <Widget>[
+                Row(
+                  children: <Widget>[
+                    Flexible(
+                      child: MiuixText(
+                        p.name,
+                        fontSize: 15,
+                        fontWeight: FontWeight.w700,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                    if (p.isPrimary) ...<Widget>[
+                      const SizedBox(width: 6),
+                      StatusTag('主租户', color: c.primary),
+                    ],
+                  ],
+                ),
+                if (hasPhone) ...<Widget>[
+                  const SizedBox(height: 2),
+                  MiuixText(
+                    p.phone,
+                    fontSize: 12.5,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    color: c.onSurfaceVariantSummary,
+                  ),
+                ] else ...<Widget>[
+                  const SizedBox(height: 2),
+                  MiuixText(
+                    '未填写电话',
+                    fontSize: 12.5,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    color: c.onSurfaceVariantSummary.withValues(alpha: 0.6),
+                  ),
+                ],
+              ],
+            ),
+          ),
+          const SizedBox(width: 2),
+          if (hasPhone) ...<Widget>[
+            _personAction(
+              icon: Icons.call_rounded,
+              tooltip: '拨打',
+              color: c.primary,
+              onTap: () => _callPhone(p.phone),
+            ),
+            _personAction(
+              icon: Icons.copy_rounded,
+              tooltip: '复制',
+              onTap: () => _copyPhone(p.phone),
+            ),
+          ],
+          _personAction(
+            icon: Icons.edit_rounded,
+            tooltip: '编辑',
+            onTap: () => _editPerson(p),
+          ),
+          _personAction(
+            icon: Icons.delete_outline_rounded,
+            tooltip: '删除',
+            color: const Color(0xFFFF3B30),
+            onTap: () => _deletePerson(p),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// 30×30 紧凑操作按钮：固定宽度保证一行放得下四个且不溢出屏幕。
+  Widget _personAction({
+    required IconData icon,
+    required String tooltip,
+    required VoidCallback onTap,
+    Color? color,
+  }) {
+    final MiuixColors c = MiuixTheme.of(context).colors;
+    return Tooltip(
+      message: tooltip,
+      child: IconButton(
+        onPressed: onTap,
+        icon: Icon(icon, size: 17),
+        color: color ?? c.onSurfaceVariantSummary,
+        visualDensity: VisualDensity.compact,
+        padding: EdgeInsets.zero,
+        constraints: const BoxConstraints(minWidth: 30, minHeight: 30),
+        splashRadius: 16,
       ),
     );
   }

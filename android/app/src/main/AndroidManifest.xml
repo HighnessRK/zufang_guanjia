@@ -1,4 +1,5 @@
-<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
 
     <!-- ====== 通知相关权限 ====== -->
     <!-- Android 13+ 通知运行时权限 -->
@@ -13,6 +14,15 @@
     <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
     <!-- 超级岛：Aurogon 校验门需要查询 / 切换网络规则状态 -->
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+    <!-- 数据恢复：读取共享存储里的备份 zip（小米互传 Download/MiShare）
+         Android 11+ 走「所有文件访问」；Android 10 及以下用 READ_EXTERNAL_STORAGE -->
+    <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE"
+        android:maxSdkVersion="32" />
+    <uses-permission android:name="android.permission.MANAGE_EXTERNAL_STORAGE"
+        tools:ignore="ScopedStorage" />
+    <!-- Android 10（API 29）以传统方式读共享存储 -->
+    <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE"
+        android:maxSdkVersion="29" />
 
     <!-- 超级岛：允许查询小米推送服务框架（XMSF）的 UID -->
     <queries>
@@ -34,7 +44,8 @@
         android:icon="@mipmap/ic_launcher"
         android:roundIcon="@mipmap/ic_launcher_round"
         android:enableOnBackInvokedCallback="true"
-        android:usesCleartextTraffic="true">
+        android:usesCleartextTraffic="true"
+        android:requestLegacyExternalStorage="true">
         <!-- INTERNET：仅用于用户主动触发的大模型拍照识别 API 调用
              （业务数据全程离线，不上传） -->
         <!-- usesCleartextTraffic：允许内网自建推理服务（如 http://192.168.x.x:11434） -->

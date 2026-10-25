@@ -1,5 +1,6 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart' show SystemNavigator;
 import 'package:flutter_miuix/miuix.dart';
 import 'package:liquid_glass_bottom_nav/liquid_glass_bottom_nav.dart';
 
@@ -144,17 +145,36 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
   Widget build(BuildContext context) {
     final MiuixColors c = MiuixTheme.of(context).colors;
     final int current = _index.value;
-    // 【键盘守卫】预测式返回（enableOnBackInvokedCallback=true）下，框架会
-    // 按 Navigator 栈/PopScope 状态提前告知系统 frameworkHandlesBack：根页
-    // 为 false 时系统"完全自行处理"返回、didPopRoute 根本不会被调用（真机
-    // 复现：键盘展开按返回→应用直接退出）。输入框聚焦时把 canPop 置 false，
-    // 框架即上报 frameworkHandlesBack=true → 返回送达 Flutter → 此处只
-    // 收键盘、不弹栈不退出；失焦后恢复 true，下一次返回正常弹栈/退出。
+    // 【返回链路总纲】预测式返回（enableOnBackInvokedCallback=true）下，框架
+    // 会按 Navigator 栈 / PopScope 状态提前告知系统 frameworkHandlesBack：
+    // 报 false 时系统"完全自行处理"返回并直接 finish 掉 Activity，Flutter
+    // 根本收不到通知。下面的 PopScope 恒定 canPop=false，让根路由
+    // popDisposition 恒为 doNotPop → 框架恒报 true → 返回永远送达 Flutter，
+    // 收键盘 / 弹二级页 / 退出由 onPopInvokedWithResult 统一裁决。
+    //
+    // 【键盘展开隐藏底栏】输入法弹起时 viewInsets.bottom > 0。玻璃导航是
+    // 悬浮常驻层，不随 Scaffold resize 上移，会压住输入框底部；编辑房间 /
+    // 录水表这类表单页尤甚。这里**条件不 include** 它（不是包裹隐藏）——
+    // 组件必须直接作 Stack 子节点，包一层会 release 崩溃（见下方注释）。
+    final bool imeOpen = MediaQuery.viewInsetsOf(context).bottom > 0;
+    // 【返回链路 / canPop 恒 false】根路由（AppShell）永不需要被 pop，让它的
+    // popDisposition 恒为 doNotPop 有两个关键作用：
+    //
+    // ① 框架据此恒定上报 frameworkHandlesBack=true（ModalRoute 会在
+    //    PopEntry 状态变化时派发 NavigationNotification，根导航器还会把子
+    //    导航器的 false 改写成 true）→ 系统绝不会"自行处理"返回，返回永远
+    //    送达 Flutter。此前 canPop 随焦点变化，失焦瞬间被上报成 false →
+    //    系统直接 finish 掉 Activity：二级页上收完键盘再按返回就退出应用
+    //    （真机复现过，v1.1.0 修复）。
+    // ② WidgetsApp.didPopRoute → Navigator.maybePop 命中 doNotPop → 只回调
+    //    本 onPopInvokedWithResult 并返回「已处理」，所以收键盘 / 弹二级页 /
+    //    退出全部在这里完成。
     return PopScope(
-      canPop: !_editableFocused,
+      canPop: false,
       onPopInvokedWithResult: (bool didPop, Object? result) {
-        if (!didPop) {
-          FocusManager.instance.primaryFocus?.unfocus();
+        if (!didPop && !_handleBack()) {
+          // 已在 Tab 根页且没有输入焦点 → 显式退出（等价于框架的兜底行为）
+          SystemNavigator.pop();
         }
       },
       child: Scaffold(
@@ -191,21 +211,23 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
                 // 必须直接作为 Stack 子节点；外层再包 Positioned/Container 会
                 // 让它内部的 Positioned 父数据链跨过代理 RO 边界，release 下
                 // 触发 BoxParentData→StackParentData 强转崩溃（profile 实证）。
-                LiquidGlassNavBar(
-                  items: _items,
-                  selectedIndex: current,
-                  onTap: _handleTabTap,
-                  iconSize: 22,
-                  // 紧凑悬浮胶囊：高度 60、居中限宽 320、两侧留白，
-                  // 不再横贯整屏（对齐大狗记 Pronto 的短 pill 观感）
-                  height: 60,
-                  maxWidth: 320,
-                  insets: 16,
-                  borderRadius: 30,
-                  labelStyle: const TextStyle(fontSize: 10.5),
-                  activeColor: c.primary,
-                  inactiveColor: c.onSurfaceVariantSummary,
-                ),
+                // 键盘展开时**直接不构建**，避免悬浮胶囊压在输入法上。
+                if (!imeOpen)
+                  LiquidGlassNavBar(
+                    items: _items,
+                    selectedIndex: current,
+                    onTap: _handleTabTap,
+                    iconSize: 22,
+                    // 紧凑悬浮胶囊：高度 60、居中限宽 320、两侧留白，
+                    // 不再横贯整屏（对齐大狗记 Pronto 的短 pill 观感）
+                    height: 60,
+                    maxWidth: 320,
+                    insets: 16,
+                    borderRadius: 30,
+                    labelStyle: const TextStyle(fontSize: 10.5),
+                    activeColor: c.primary,
+                    inactiveColor: c.onSurfaceVariantSummary,
+                  ),
               ],
             ),
           ),
@@ -217,24 +239,24 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
   /// 【返回回链】引擎 back（返回键 / 手势条点击 / 预测式返回未被页面转场
   /// 认领的提交）→ WidgetsBinding.handlePopRoute → 逐观察者询问。
   ///
-  /// 当前 Tab 有二级页面 → 弹出一层（动画由 AppPageRoute 播放）返回 true；
-  /// 已在根页面 → 返回 false，交给系统默认行为退出应用。
+  /// 正常链路下返回先落在 build 处的 PopScope.onPopInvokedWithResult（根路由
+  /// doNotPop → WidgetsApp.didPopRoute 命中 maybePop 后即消费），这里保留
+  /// 同一套逻辑作为纵深防御：某些平台链路仍会直接问到 observer。
   @override
-  Future<bool> didPopRoute() async {
-    // 键盘守卫（纵深防御）：正常情况下输入框聚焦时 PopScope 已让框架拦截
-    // 返回并只收键盘（见 build 处）；若某些路径仍直达这里，再兜一层。
+  Future<bool> didPopRoute() async => _handleBack();
+
+  /// 返回处理：收键盘 → 弹当前 Tab 的二级页 → 都没得处理则交回系统退出。
+  ///
+  /// 返回 true 表示本次返回已被消费（收键盘也算消费，不会连带退出）。
+  bool _handleBack() {
     final FocusNode? focus = FocusManager.instance.primaryFocus;
-    final bool editableFocused = focus != null &&
-        focus.hasFocus &&
-        focus.context != null &&
-        focus.context!
-                .findAncestorWidgetOfExactType<EditableText>() !=
-            null;
-    if (editableFocused || MediaQuery.viewInsetsOf(context).bottom > 0) {
+    final bool editable = _isEditableFocused();
+    final bool ime = MediaQuery.viewInsetsOf(context).bottom > 0;
+    final NavigatorState? nav = _navKeys[_index.value].currentState;
+    if (editable || ime) {
       focus?.unfocus();
       return true;
     }
-    final NavigatorState? nav = _navKeys[_index.value].currentState;
     if (nav != null && nav.canPop()) {
       nav.pop();
       return true;

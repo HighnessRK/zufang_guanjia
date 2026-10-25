@@ -5,6 +5,7 @@ import '../../core/utils/date_util.dart';
 import '../../data/models/room.dart';
 import '../../data/repository/payment_repository.dart';
 import '../../data/repository/room_repository.dart';
+import '../../services/data_bus.dart';
 import '../../services/reminder_engine.dart';
 import '../widgets/app_widgets.dart';
 
@@ -31,6 +32,19 @@ class _StatPageState extends State<StatPage> {
   void initState() {
     super.initState();
     _load();
+    // MCP / 其它入口改动收款后立刻刷新（详见 [DataBus]）
+    DataBus.instance.addListener(_onDataBus);
+  }
+
+  @override
+  void dispose() {
+    DataBus.instance.removeListener(_onDataBus);
+    super.dispose();
+  }
+
+  /// MCP 写操作 → 月度报表与欠费明细立即重算
+  void _onDataBus() {
+    if (mounted) _load();
   }
 
   Future<void> _load() async {

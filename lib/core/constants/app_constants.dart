@@ -5,8 +5,8 @@ class AppConstants {
 
   //========================= 应用信息 =========================
   static const String appName = '租房管家';
-  static const String appVersion = '1.0.6';
-  static const String appBuild = '7';
+  static const String appVersion = '1.1.0';
+  static const String appBuild = '8';
 
   /// ====== 应用内更新：Release 仓库（GitHub / Gitee 同名公开仓库）======
   static const String updateRepoName = 'zufang_guanjia';
@@ -32,6 +32,17 @@ class AppConstants {
   //========================= 配置文件 =========================
   /// 本地配置文件名（纯文本）
   static const String configFileName = 'info.gwt';
+
+  //========================= MCP Server =======================
+  /// MCP Server 固定监听端口（Streamable HTTP：POST /mcp）
+  ///
+  /// 固定端口的好处是「复制出来的配置永不变化」——AI 客户端只要导入一次
+  /// 配置就能一直连（LAN 地址可能随路由器分配变化，端口不会）。
+  static const int mcpPort = 8765;
+
+  /// MCP 服务端名 / 版本（initialize 时返回给客户端）
+  static const String mcpServerName = '租房管家';
+  static const String mcpProtocolVersion = '2025-06-18';
 
   //========================= 通知 =============================
   /// 通知渠道：通用提醒

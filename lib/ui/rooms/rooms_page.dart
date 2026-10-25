@@ -7,6 +7,7 @@ import '../../core/utils/date_util.dart';
 import '../../data/models/room.dart';
 import '../../data/repository/payment_repository.dart';
 import '../../data/repository/room_repository.dart';
+import '../../services/data_bus.dart';
 import '../shell/app_shell.dart';
 import '../transitions.dart';
 import '../widgets/app_widgets.dart';
@@ -56,6 +57,8 @@ class _RoomsPageState extends State<RoomsPage> {
   void initState() {
     super.initState();
     _load();
+    // MCP / 其它入口改动房间或欠款后立刻刷新（详见 [DataBus]）
+    DataBus.instance.addListener(_onDataBus);
   }
 
   @override
@@ -71,6 +74,7 @@ class _RoomsPageState extends State<RoomsPage> {
 
   @override
   void dispose() {
+    DataBus.instance.removeListener(_onDataBus);
     _tabIndex?.removeListener(_onTabChanged);
     _searchCtrl.dispose();
     super.dispose();
@@ -79,6 +83,11 @@ class _RoomsPageState extends State<RoomsPage> {
   /// 从其它 Tab 切回房间管理时重新拉取（收款 / 抄表 / 编辑都会改欠款）
   void _onTabChanged() {
     if (_tabIndex?.value == _tab && mounted) _load();
+  }
+
+  /// MCP 写操作 → 房间列表与欠款立即重算
+  void _onDataBus() {
+    if (mounted) _load();
   }
 
   Future<void> _load() async {

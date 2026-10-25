@@ -5,6 +5,7 @@ import 'package:flutter_miuix/miuix.dart';
 import '../../core/constants/app_constants.dart';
 import '../../core/utils/date_util.dart';
 import '../../data/models/notice_item.dart';
+import '../../services/data_bus.dart';
 import '../../services/notification_service.dart';
 import '../../services/reminder_engine.dart';
 import '../notification/notification_center_page.dart';
@@ -42,6 +43,8 @@ class _HomePageState extends State<HomePage> {
   void initState() {
     super.initState();
     _load();
+    // MCP / 其它入口改动数据后立刻刷新（详见 [DataBus]）
+    DataBus.instance.addListener(_onDataBus);
   }
 
   @override
@@ -57,6 +60,7 @@ class _HomePageState extends State<HomePage> {
 
   @override
   void dispose() {
+    DataBus.instance.removeListener(_onDataBus);
     _tabIndex?.removeListener(_onTabChanged);
     super.dispose();
   }
@@ -65,6 +69,11 @@ class _HomePageState extends State<HomePage> {
   /// （原先由 push 返回后的 `.then((_) => _load())` 承担）
   void _onTabChanged() {
     if (_tabIndex?.value == 0 && mounted) _load();
+  }
+
+  /// MCP 写操作 / 跨页改动 → 首页统计与提醒立即重算
+  void _onDataBus() {
+    if (mounted) _load();
   }
 
   /// 拉取数据：统计 + 提醒，并同步刷新三端通知

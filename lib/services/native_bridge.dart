@@ -134,4 +134,61 @@ class NativeBridge {
       'path': path,
     });
   }
+
+  //========================= 备份 / 存储 =========================
+
+  /// 只生成备份 zip 到应用备份目录（不弹系统分享），返回完整路径。
+  /// MCP 的 create_backup 与数据管理页共用。
+  static Future<String> backupToFile({
+    required String dbPath,
+    required String configPath,
+  }) async {
+    final String? r = await _channel.invokeMethod<String>('backupToFile',
+        <String, Object?>{
+      'dbPath': dbPath,
+      'configPath': configPath,
+    });
+    return r ?? '';
+  }
+
+  /// 列出指定目录下的备份 zip（按修改时间倒序，最新在前）。
+  /// [dirPath] 传空串 = 应用自身备份目录；传小米互传目录 = 读互传备份。
+  ///
+  /// 返回 `[{name, path, size, modified}]`，目录不存在 / 无权限返回空表。
+  static Future<List<Map<String, dynamic>>> listBackups(String dirPath) async {
+    final List<dynamic>? r =
+        await _channel.invokeMethod<List<dynamic>>('listBackups',
+            <String, Object?>{'dirPath': dirPath});
+    return (r ?? <dynamic>[])
+        .map((dynamic e) => (e as Map<dynamic, dynamic>).map(
+            (dynamic k, dynamic v) =>
+                MapEntry<String, dynamic>(k.toString(), v)))
+        .toList();
+  }
+
+  /// 备份相关目录：应用备份目录 / 小米互传目录 / 下载目录
+  ///
+  /// 返回 `appBackupDir`、`miShareDir`、`miShareExists`、`downloadDir`
+  static Future<Map<String, dynamic>> backupDirs() async {
+    final Map<dynamic, dynamic> r =
+        await _channel.invokeMethod<Map<dynamic, dynamic>>('backupDirs') ??
+            <dynamic, dynamic>{};
+    return r.map(
+        (dynamic k, dynamic v) => MapEntry<String, dynamic>(k.toString(), v));
+  }
+
+  /// 是否已具备共享存储（Download/MiShare）读取权限
+  static Future<bool> hasStorageAccess() async {
+    final bool? ok =
+        await _channel.invokeMethod<bool>('hasStorageAccess');
+    return ok ?? false;
+  }
+
+  /// 申请共享存储读取权限：Android 11+ 拉起「所有文件访问」设置页，
+  /// Android 10 走 READ_EXTERNAL_STORAGE 运行时授权
+  static Future<bool> requestStorageAccess() async {
+    final bool? ok =
+        await _channel.invokeMethod<bool>('requestStorageAccess');
+    return ok ?? false;
+  }
 }

@@ -992,6 +992,81 @@ Future<T?> showOptionPicker<T>(
   );
 }
 
+/// 取图来源：拍照 / 系统相册（Android 13+ 走金标联盟照片选择器 Photo Picker）
+enum AppImageSource { camera, gallery }
+
+/// 图片来源选择弹窗（HyperOS 风格列表）：拍照 / 从相册选择。
+///
+/// 【为什么需要】抄表识别过去只有「调相机」一条路，用户想把相册里
+/// 已经拍好的电表照片（或截图）喂给识别就得先另存为新照片；
+/// 金标联盟要求图片选择必须支持系统照片选择器，这里统一入口。
+/// 取消返回 null。
+Future<AppImageSource?> showImageSourceDialog(
+  BuildContext context, {
+  String title = '选择图片来源',
+  String? summary,
+}) {
+  const List<MapEntry<AppImageSource, String>> options =
+      <MapEntry<AppImageSource, String>>[
+    MapEntry<AppImageSource, String>(
+        AppImageSource.camera, '拍照（打开相机）'),
+    MapEntry<AppImageSource, String>(
+        AppImageSource.gallery, '从相册选择（系统照片选择器）'),
+  ];
+  return showGeneralDialog<AppImageSource>(
+    context: context,
+    barrierDismissible: true,
+    barrierLabel: 'dismiss',
+    barrierColor: Colors.transparent,
+    transitionDuration: const Duration(milliseconds: 220),
+    pageBuilder: (BuildContext ctx, Animation<double> a, Animation<double> b) {
+      final MiuixColors c = MiuixTheme.of(ctx).colors;
+      const List<IconData> icons = <IconData>[
+        Icons.photo_camera_rounded,
+        Icons.photo_library_rounded,
+      ];
+      return MiuixOverlayDialog(
+        show: true,
+        renderInRootScaffold: false,
+        title: title,
+        summary: summary,
+        onDismissRequest: () => Navigator.of(ctx).pop(),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: <Widget>[
+            for (int i = 0; i < options.length; i++) ...<Widget>[
+              if (i != 0) const MiuixHorizontalDivider(),
+              GestureDetector(
+                behavior: HitTestBehavior.opaque,
+                onTap: () => Navigator.of(ctx).pop(options[i].key),
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 13),
+                  child: Row(
+                    children: <Widget>[
+                      Icon(icons[i], size: 20, color: c.primary),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: MiuixText(
+                          options[i].value,
+                          fontSize: 15,
+                          fontWeight: FontWeight.w500,
+                          color: c.onSurface,
+                        ),
+                      ),
+                      Icon(Icons.chevron_right_rounded,
+                          size: 20, color: c.onSurfaceVariantSummary),
+                    ],
+                  ),
+                ),
+              ),
+            ],
+          ],
+        ),
+      );
+    },
+  );
+}
+
 /// HyperOS 风格日期选择弹窗（液态玻璃面板 + 身后极光透底 + miuix 月历）。
 ///
 /// 替换 Material 的 showDatePicker：整块面板是液态玻璃卡（页面极光从身后
@@ -1065,7 +1140,10 @@ class _DatePickDialogState extends State<_DatePickDialog> {
   /// 年份选择面板展开中（点月历顶部「xx年x月」进入）
   bool _pickingYear = false;
 
-  /// 月历重建序号：选完年份后自增，令 MiuixDatePicker 以新的
+  /// 月份选择面板展开中（选完年份后进入，再选月份回日历）
+  bool _pickingMonth = false;
+
+  /// 月历重建序号：选完年份 / 月份后自增，令 MiuixDatePicker 以新的
   /// initialDate 重建内部状态，跳转到目标年月。
   int _calendarEpoch = 0;
 
@@ -1099,13 +1177,28 @@ class _DatePickDialogState extends State<_DatePickDialog> {
     setState(() => _pickingYear = true);
   }
 
-  /// 选中年份：保持月份不变，日 clamp 到当月最后一天，回到月历并跳转
+  /// 选中年份：进入月份选择面板（年 → 月 → 日历的 HyperOS 三段式）
   void _onYearPicked(int year) {
-    final int lastDay = DateTime(year, _selected.month + 1, 0).day;
+    setState(() {
+      _selected = DateTime(
+        year,
+        _selected.month,
+        // 日先保住，最终由选月 / clamp 决定
+        _selected.day,
+      );
+      _pickingYear = false;
+      _pickingMonth = true;
+    });
+  }
+
+  /// 选中月份：日 clamp 到当月最后一天，回到月历并跳转到该年月
+  void _onMonthPicked(int month) {
+    final int year = _selected.year;
+    final int lastDay = DateTime(year, month + 1, 0).day;
     final int day = _selected.day > lastDay ? lastDay : _selected.day;
     setState(() {
-      _selected = DateTime(year, _selected.month, day);
-      _pickingYear = false;
+      _selected = DateTime(year, month, day);
+      _pickingMonth = false;
       _calendarEpoch++;
     });
   }
@@ -1150,18 +1243,45 @@ class _DatePickDialogState extends State<_DatePickDialog> {
                             color: c.onSurfaceContainer,
                           ),
                         ),
-                        MiuixText(
-                          _pickingYear ? '选择年份' : _selectedLabel,
-                          fontSize: 13,
-                          fontWeight: FontWeight.w600,
-                          color: c.primary,
+                        // 月份面板里点标签可退回年面板；年 / 月面板都显示
+                        // 当前面板名，日历显示完整日期
+                        GestureDetector(
+                          behavior: HitTestBehavior.opaque,
+                          onTap: _pickingMonth
+                              ? () => setState(() {
+                                    _pickingMonth = false;
+                                    _pickingYear = true;
+                                  })
+                              : null,
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: <Widget>[
+                              MiuixText(
+                                _pickingYear
+                                    ? '选择年份'
+                                    : _pickingMonth
+                                        ? '选择月份'
+                                        : _selectedLabel,
+                                fontSize: 13,
+                                fontWeight: FontWeight.w600,
+                                color: c.primary,
+                              ),
+                              if (_pickingMonth) ...<Widget>[
+                                const SizedBox(width: 2),
+                                Icon(Icons.swap_horiz_rounded,
+                                    size: 14, color: c.primary),
+                              ],
+                            ],
+                          ),
                         ),
                       ],
                     ),
                     const SizedBox(height: 14),
-                    // 主体：年份选择面板 / 澎湃OS 月历（二选一）
+                    // 主体：年份面板 / 月份面板 / 澎湃OS 月历（三选一）
                     if (_pickingYear)
                       _buildYearPanel(c)
+                    else if (_pickingMonth)
+                      _buildMonthPanel(c)
                     else
                       MiuixDatePicker(
                         // 选年后强制重建，跳转到目标年月
@@ -1260,6 +1380,67 @@ class _DatePickDialogState extends State<_DatePickDialog> {
                 color: selected
                     ? c.onPrimary
                     : (current ? c.primary : c.onSurfaceContainer),
+              ),
+            ),
+          );
+        },
+      ),
+    );
+  }
+
+  /// 月份快速选择面板：3 列 × 4 行，与年面板同构；超出可选区间
+  /// （首年 / 末年）的月份置灰不可点。
+  Widget _buildMonthPanel(MiuixColors c) {
+    final int year = _selected.year;
+    final int thisYear = DateTime.now().year;
+    final int thisMonth = DateTime.now().month;
+    // 越界月：首年只允许 firstDate.month 起，末年只到 lastDate.month 止
+    final int minM =
+        year == widget.firstDate.year ? widget.firstDate.month : 1;
+    final int maxM = year == widget.lastDate.year ? widget.lastDate.month : 12;
+    return SizedBox(
+      height: 320,
+      child: GridView.builder(
+        padding: EdgeInsets.zero,
+        physics: const NeverScrollableScrollPhysics(), // 固定 4 行，无需滚动
+        gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+          crossAxisCount: 3,
+          mainAxisSpacing: 8,
+          crossAxisSpacing: 8,
+          childAspectRatio: 2.15,
+        ),
+        itemCount: 12,
+        itemBuilder: (BuildContext ctx, int i) {
+          final int month = i + 1;
+          final bool selected = month == _selected.month;
+          final bool current = year == thisYear && month == thisMonth;
+          final bool enabled = month >= minM && month <= maxM;
+          return GestureDetector(
+            behavior: HitTestBehavior.opaque,
+            onTap: enabled ? () => _onMonthPicked(month) : null,
+            child: AnimatedContainer(
+              duration: const Duration(milliseconds: 160),
+              alignment: Alignment.center,
+              decoration: BoxDecoration(
+                color: !enabled
+                    ? c.secondaryContainer.withValues(alpha: 0.25)
+                    : selected
+                        ? c.primary
+                        : c.secondaryContainer.withValues(alpha: 0.55),
+                borderRadius: BorderRadius.circular(14),
+                border: current && !selected && enabled
+                    ? Border.all(color: c.primary, width: 1.4)
+                    : null,
+              ),
+              child: MiuixText(
+                '$month 月',
+                fontSize: 15,
+                fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
+                color: !enabled
+                    ? c.onSurfaceVariantSummary.withValues(alpha: 0.45)
+                    : selected
+                        ? c.onPrimary
+                        : (current ? c.primary : c.onSurfaceContainer),
               ),
             ),
           );

@@ -7,6 +7,8 @@ import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
+import android.os.Environment
+import android.provider.Settings
 import android.util.Log
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
@@ -46,6 +48,7 @@ class MainActivity : FlutterActivity() {
         private const val CHANNEL_NAME = "com.zufang.guanjia/native"
         private const val REQ_NOTIFY = 1001
         private const val REQ_PICK_BACKUP = 1002
+        private const val REQ_STORAGE = 1003
         private const val TAG = "FocusNotify"
     }
 
@@ -220,6 +223,56 @@ class MainActivity : FlutterActivity() {
                     }
                 }
 
+                //==================== 备份（只写文件，不弹分享）====================
+                // MCP create_backup / 数据管理页「生成备份文件」用：返回 zip 完整路径
+                "backupToFile" -> {
+                    try {
+                        val dbPath = call.argument<String>("dbPath") ?: ""
+                        val configPath = call.argument<String>("configPath") ?: ""
+                        val out = writeBackupZip(dbPath, configPath)
+                        result.success(out.absolutePath)
+                    } catch (e: Exception) {
+                        result.error("BACKUP_FAILED", e.message, null)
+                    }
+                }
+
+                //==================== 列出备份 zip ====================
+                // dirPath 为空 → 列应用备份目录；否则列指定目录（如小米互传）
+                // 返回 [{name,path,size,modified}]，按修改时间倒序
+                "listBackups" -> {
+                    Thread {
+                        val dirPath = call.argument<String>("dirPath") ?: ""
+                        val list = listBackupZips(dirPath)
+                        runOnUiThread { result.success(list) }
+                    }.start()
+                }
+
+                //==================== 备份 / 数据目录路径 ====================
+                // appBackupDir = 应用私有外部备份目录；miShareDir = 小米互传目录
+                "backupDirs" -> {
+                    val map = HashMap<String, Any>()
+                    map["appBackupDir"] =
+                        File(getExternalFilesDir(null), "backup").absolutePath
+                    map["miShareDir"] = miShareDir().absolutePath
+                    map["miShareExists"] = miShareDir().exists()
+                    map["downloadDir"] =
+                        Environment.getExternalStoragePublicDirectory(
+                            Environment.DIRECTORY_DOWNLOADS
+                        ).absolutePath
+                    result.success(map)
+                }
+
+                //==================== 存储读取权限 ====================
+                // Android 11+ 读共享下载目录（小米互传 zip）需「所有文件访问」；
+                // Android 10 走 READ_EXTERNAL_STORAGE 运行时申请。
+                "hasStorageAccess" -> {
+                    result.success(hasStorageAccess())
+                }
+
+                "requestStorageAccess" -> {
+                    result.success(requestStorageAccess())
+                }
+
                 //==================== 选择备份包 ====================
                 "pickBackupFile" -> {
                     pendingPickResult = result
@@ -280,16 +333,7 @@ class MainActivity : FlutterActivity() {
      * @return 备份文件名
      */
     private fun doBackup(dbPath: String, configPath: String): String {
-        val dir = File(getExternalFilesDir(null), "backup")
-        if (!dir.exists()) dir.mkdirs()
-
-        val stamp = SimpleDateFormat("yyyyMMdd_HHmmss", Locale.getDefault()).format(Date())
-        val outFile = File(dir, "zufang_guanjia_backup_$stamp.zip")
-
-        ZipOutputStream(FileOutputStream(outFile)).use { zos ->
-            putFileIntoZip(zos, File(dbPath), "rental.db")
-            putFileIntoZip(zos, File(configPath), "info.gwt")
-        }
+        val outFile = writeBackupZip(dbPath, configPath)
 
         // 调起系统分享，用户可发到微信 / 网盘 / 本地文件
         try {
@@ -311,6 +355,118 @@ class MainActivity : FlutterActivity() {
         }
 
         return outFile.name
+    }
+
+    /**
+     * 只写备份 zip 到应用外部备份目录（不弹分享）——
+     * MCP 的 create_backup 与数据管理页「生成备份文件」共用
+     */
+    private fun writeBackupZip(dbPath: String, configPath: String): File {
+        val dir = File(getExternalFilesDir(null), "backup")
+        if (!dir.exists()) dir.mkdirs()
+
+        val stamp = SimpleDateFormat("yyyyMMdd_HHmmss", Locale.getDefault()).format(Date())
+        val outFile = File(dir, "zufang_guanjia_backup_$stamp.zip")
+
+        ZipOutputStream(FileOutputStream(outFile)).use { zos ->
+            putFileIntoZip(zos, File(dbPath), "rental.db")
+            putFileIntoZip(zos, File(configPath), "info.gwt")
+        }
+        return outFile
+    }
+
+    /**
+     * 小米互传备份目录：内部存储/Download/MiShare
+     * （小米互传 / 超级终端互传默认的接收路径）
+     */
+    private fun miShareDir(): File {
+        val downloads = Environment.getExternalStoragePublicDirectory(
+            Environment.DIRECTORY_DOWNLOADS
+        )
+        return File(downloads, "MiShare")
+    }
+
+    /**
+     * 列出目录下的备份 zip，按修改时间倒序（最新在前）。
+     *
+     * @param dirPath 空串 → 应用备份目录；否则解析该路径
+     * （读不到时回落应用备份目录），目录不存在 / 无权限返回空列表
+     * @return [{name, path, size, modified}]
+     */
+    private fun listBackupZips(dirPath: String): List<Map<String, Any>> {
+        val dir = if (dirPath.isBlank()) {
+            File(getExternalFilesDir(null), "backup")
+        } else {
+            File(dirPath)
+        }
+        if (!dir.isDirectory) return emptyList()
+
+        val files = dir.listFiles { f ->
+            f.isFile && f.extension.equals("zip", ignoreCase = true)
+        } ?: return emptyList()
+
+        return files
+            .sortedByDescending { it.lastModified() }
+            .map { f ->
+                val map = HashMap<String, Any>()
+                map["name"] = f.name
+                map["path"] = f.absolutePath
+                map["size"] = f.length()
+                map["modified"] = f.lastModified()
+                map
+            }
+    }
+
+    //========================= 存储读取权限 =====================
+
+    /**
+     * 是否已能读共享存储（Download/MiShare 等）：
+     *   Android 11+ → Environment.isExternalStorageManager()
+     *   Android 10  → READ_EXTERNAL_STORAGE 运行时授权
+     *   Android 9-  → 安装时授权，恒为 true
+     */
+    private fun hasStorageAccess(): Boolean {
+        return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            Environment.isExternalStorageManager()
+        } else {
+            ContextCompat.checkSelfPermission(
+                this, Manifest.permission.READ_EXTERNAL_STORAGE
+            ) == PackageManager.PERMISSION_GRANTED
+        }
+    }
+
+    /**
+     * 申请共享存储读取权限（拉起「所有文件访问」设置页 / 运行时授权）。
+     * 返回 true 表示已发起申请（或低版本本就具备）。
+     */
+    private fun requestStorageAccess(): Boolean {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            return try {
+                startActivity(
+                    Intent(
+                        Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION,
+                        Uri.parse("package:$packageName")
+                    )
+                )
+                true
+            } catch (_: Throwable) {
+                // 部分 ROM 无该细分设置页 → 退回「所有文件访问」总设置
+                try {
+                    startActivity(Intent(Settings.ACTION_MANAGE_ALL_FILES_ACCESS_PERMISSION))
+                    true
+                } catch (_: Throwable) {
+                    false
+                }
+            }
+        }
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.M) return true
+        if (hasStorageAccess()) return true
+        ActivityCompat.requestPermissions(
+            this,
+            arrayOf(Manifest.permission.READ_EXTERNAL_STORAGE),
+            REQ_STORAGE
+        )
+        return true
     }
 
     /**

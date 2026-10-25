@@ -1,7 +1,7 @@
 name: zufang_guanjia
 description: 租房管家 —— 纯本地离线租房管理安卓 APP（房源 / 租户 / 房租 / 水电费 / 到期提醒）。
 publish_to: 'none'
-version: 1.0.6+7
+version: 1.1.0+8
 
 environment:
   # 需要 Flutter 3.24 及以上稳定版（Dart 3.5）
