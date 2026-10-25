@@ -51,6 +51,7 @@ class DatabaseHelper {
     await db.execute('''
       CREATE TABLE ${AppConstants.tableRooms} (
         room_no      TEXT    PRIMARY KEY,  -- 房间号
+        floor        TEXT    NOT NULL DEFAULT '', -- 自定义楼层（一楼/店面；空=按房号推导）
         rent         INTEGER NOT NULL DEFAULT 0, -- 租金
         paid         INTEGER NOT NULL DEFAULT 0, -- 实付
         room_type    TEXT    DEFAULT '',   -- 房型
@@ -187,6 +188,14 @@ class DatabaseHelper {
           whereArgs: <Object?>[people.first['id']],
         );
       }
+    }
+
+    // v3 → v4：自定义楼层 —— rooms 表增加 floor。空串表示仍按房号推导
+    //（101→1、1203→12），填了自定义值（「一楼」「店面」）则优先按它分组。
+    if (oldVersion < 4) {
+      await db.execute(
+          'ALTER TABLE ${AppConstants.tableRooms} '
+          "ADD COLUMN floor TEXT NOT NULL DEFAULT ''");
     }
   }
 

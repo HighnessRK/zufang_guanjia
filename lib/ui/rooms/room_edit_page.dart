@@ -4,6 +4,7 @@ import 'package:flutter_miuix/miuix.dart';
 import '../../core/config/app_config.dart';
 import '../../core/constants/app_constants.dart';
 import '../../core/utils/date_util.dart';
+import '../../data/models/person.dart';
 import '../../data/models/room.dart';
 import '../../data/repository/payment_repository.dart';
 import '../../data/repository/person_repository.dart';
@@ -16,10 +17,14 @@ const double _kFieldLabelWidth = 112;
 
 /// 新增 / 编辑房间信息。
 class RoomEditPage extends StatefulWidget {
-  const RoomEditPage({super.key, this.roomNo});
+  const RoomEditPage({super.key, this.roomNo, this.copyFrom});
 
   /// 传入表示「编辑」，为空表示「新增」
   final String? roomNo;
+
+  /// 【v1.1.1】传入表示「复制为新房」：沿用该房间的楼层 / 房型 / 租金 /
+  /// 押金 / 配套家电等配置，新房号留空待填，租户、抄表、实付不带过来。
+  final Room? copyFrom;
 
   @override
   State<RoomEditPage> createState() => _RoomEditPageState();
@@ -31,9 +36,11 @@ class _RoomEditPageState extends State<RoomEditPage> {
   late final TextEditingController _paid;
   late final TextEditingController _roomType;
   late final TextEditingController _tenant;
+  late final TextEditingController _phone;
   late final TextEditingController _idCard;
   late final TextEditingController _checkIn;
   late final TextEditingController _expire;
+  late final TextEditingController _floor;
   late final TextEditingController _deposit;
   late final TextEditingController _keyCount;
   late final TextEditingController _cardCount;
@@ -53,9 +60,34 @@ class _RoomEditPageState extends State<RoomEditPage> {
   /// 租金输入框单位后缀：元/月、元/季、元/半年、元/年
   String get _cycleUnit => '元/${AppConfig.cycleUnit(_cycle)}';
 
-  /// 当前输入按周期折算出的月租（内部记账口径：应收 = 月租 × 周期月数）
-  int get _monthlyRent =>
-      (int.tryParse(_rent.text.trim()) ?? 0) ~/ _cycle;
+  /// 当前输入按周期折算出的月租（内部记账口径：应收 = 月租 × 周期月数）。
+  ///
+  /// 【v1.1.1 修复】改为**小数**：年付填 7600 时 7600 ÷ 12 = 633.333…，
+  /// 此前用 `~/` 取整成 633，账期引擎按 633 × 12 = 7596 出应收，凭空少
+  /// 4 元。保留小数后应收在 [PaymentRepository] 处四舍五入回 7600。
+  double get _monthlyRent =>
+      (double.tryParse(_rent.text.trim()) ?? 0) / _cycle;
+
+  /// 楼层下拉可选项：1 ~ 20 层（超出可用「自定义」手输，如「一楼」「店面」）
+  static const int _maxFloorOption = 20;
+
+  /// 电话号码是否合规（11 位、1 开头）——实时提示用
+  static bool _phoneOk(String v) => RegExp(r'^1\d{10}$').hasMatch(v);
+
+  /// 身份证是否合规（18 位 + ISO 7064:1983 MOD 11-2 校验位）——实时提示用
+  static bool _idCardOk(String v) {
+    final String t = v.trim();
+    if (!RegExp(r'^\d{17}[\dXx]$').hasMatch(t)) return false;
+    const String w = '7 9 10 5 8 4 2 1 6 3 7 9 10 5 8 4 2';
+    const List<int> check = <int>[1, 0, 9, 8, 7, 6, 5, 4, 3, 2];
+    final List<int> weights = w.split(' ').map(int.parse).toList();
+    int sum = 0;
+    for (int i = 0; i < 17; i++) {
+      sum += (t.codeUnitAt(i) - 48) * weights[i];
+    }
+    final String last = t[17].toUpperCase();
+    return last == (check[sum % 11] == 10 ? 'X' : '${check[sum % 11]}');
+  }
 
   /// 周期累计水/电费（编辑模式，水收费结算区显示与结算用）
   int _waterFee = 0;
@@ -70,9 +102,11 @@ class _RoomEditPageState extends State<RoomEditPage> {
     _paid = TextEditingController();
     _roomType = TextEditingController();
     _tenant = TextEditingController();
+    _phone = TextEditingController();
     _idCard = TextEditingController();
     _checkIn = TextEditingController();
     _expire = TextEditingController();
+    _floor = TextEditingController();
     _deposit = TextEditingController();
     _keyCount = TextEditingController();
     _cardCount = TextEditingController();
@@ -82,6 +116,10 @@ class _RoomEditPageState extends State<RoomEditPage> {
     _washer = TextEditingController();
     // 边输入边刷新「月租」换算小字（租金按设置周期口径展示）
     _rent.addListener(_onRentChanged);
+    // 边输入边刷新电话 / 身份证的实时校验小字与入住日期联动的到期日
+    _phone.addListener(_onRentChanged);
+    _idCard.addListener(_onRentChanged);
+    _checkIn.addListener(_onCheckInChanged);
     _fill();
   }
 
@@ -89,20 +127,39 @@ class _RoomEditPageState extends State<RoomEditPage> {
     if (mounted) setState(() {});
   }
 
-  /// 编辑模式下把数据库里的值填进表单
+  /// 【v1.1.1】入住日期一改，到期日期自动顺延一年（可在设置里关闭）。
+  void _onCheckInChanged() {
+    if (!mounted) return;
+    final DateTime? d = DateTime.tryParse(_checkIn.text.trim());
+    if (d == null) return;
+    if (!AppConfig.instance.autoExpire) return;
+    setState(() {
+      _expire.text = DateUtil.format(DateTime(d.year + 1, d.month, d.day));
+    });
+  }
+
+  /// 编辑模式下把数据库里的值填进表单；「复制为新房」则只带配置项。
   Future<void> _fill() async {
-    if (!_isEdit) return;
-    final Room? room = await RoomRepository.instance.byRoomNo(widget.roomNo!);
+    final bool isCopy = !_isEdit && widget.copyFrom != null;
+    // 「复制」分支不查库、走同步路径，可能在 initState 还没跑完就 setState，
+    // 撞上构建期会抛 "setState() called during build"。先让出一帧避开。
+    if (isCopy) await Future<void>.delayed(Duration.zero);
+    final Room? room = _isEdit
+        ? await RoomRepository.instance.byRoomNo(widget.roomNo!)
+        : widget.copyFrom;
     if (room == null || !mounted) return;
     setState(() {
       // 租金按设置的周期口径展示（年付显示年金额），内部仍存月租
-      _rent.text = '${room.rent * _cycle}';
-      _paid.text = '${room.paid}';
+      _rent.text = (room.rent * _cycle).round().toString();
+      // 复制只带「配置」：楼层 / 房型 / 租金 / 押金 / 钥匙磁卡 / 配套家电；
+      // 实付、租户、身份证、起止日期、抄表与水电费一律不带（新房是空的）
+      _paid.text = isCopy ? '' : '${room.paid}';
       _roomType.text = room.roomType;
-      _tenant.text = room.tenant;
-      _idCard.text = room.idCard;
-      _checkIn.text = room.checkIn ?? '';
-      _expire.text = room.expire ?? '';
+      _tenant.text = isCopy ? '' : room.tenant;
+      _floor.text = room.floor;
+      _idCard.text = isCopy ? '' : room.idCard;
+      _checkIn.text = isCopy ? '' : (room.checkIn ?? '');
+      _expire.text = isCopy ? '' : (room.expire ?? '');
       _deposit.text = '${room.deposit}';
       _keyCount.text = '${room.keyCount}';
       _cardCount.text = '${room.cardCount}';
@@ -110,9 +167,27 @@ class _RoomEditPageState extends State<RoomEditPage> {
       _heater.text = '${room.heater}';
       _fridge.text = '${room.fridge}';
       _washer.text = '${room.washer}';
-      _waterFee = room.waterFee;
-      _elecFee = room.elecFee;
+      _waterFee = isCopy ? 0 : room.waterFee;
+      _elecFee = isCopy ? 0 : room.elecFee;
     });
+    if (isCopy) return; // 复制不带租户，电话自然也是空的
+
+    // 【v1.1.1】把主租户电话一并填进表单：此前「添加房间」界面压根没有电话
+    // 字段，只能进详情页再补一位租户才能留号码。
+    final List<Person> people =
+        await PersonRepository.instance.byRoom(widget.roomNo!);
+    if (!mounted) return;
+    Person? primary;
+    for (final Person p in people) {
+      if (p.isPrimary) {
+        primary = p;
+        break;
+      }
+    }
+    final String phone = primary?.phone ?? '';
+    if (_phone.text != phone) {
+      setState(() => _phone.text = phone);
+    }
   }
 
   @override
@@ -163,6 +238,11 @@ class _RoomEditPageState extends State<RoomEditPage> {
               keyboardType: TextInputType.text,
               labelWidth: _kFieldLabelWidth,
             ),
+            // 【v1.1.1】一楼是店面、房号并不叫 101 → 楼层支持自定义分组
+            _FloorField(
+              controller: _floor,
+              labelWidth: _kFieldLabelWidth,
+            ),
             _RoomTypeField(
               controller: _roomType,
               labelWidth: _kFieldLabelWidth,
@@ -173,8 +253,11 @@ class _RoomEditPageState extends State<RoomEditPage> {
               controller: _rent,
               keyboardType: TextInputType.number,
               labelWidth: _kFieldLabelWidth,
-              caption: '月租 ¥$_monthlyRent · 按「${AppConfig.cycleLabel(_cycle)}」口径填写'
-                  '（年付即填一年总额，内部按月租入账）',
+              caption: _cycle <= 1
+                  ? '月租 ¥${_monthlyRent.round()}'
+                  : '月租 ¥${_monthlyRent.toStringAsFixed(2)} · 按「${AppConfig.cycleLabel(_cycle)}」口径填写'
+                      '（${AppConfig.cycleLabel(_cycle)}即填${AppConfig.cycleLabel(_cycle)}总额，'
+                      '内部按月租入账，不会少收）',
             ),
             AppLabelField(
               label: '实付（本周期）',
@@ -197,12 +280,33 @@ class _RoomEditPageState extends State<RoomEditPage> {
               controller: _tenant,
               labelWidth: _kFieldLabelWidth,
             ),
+            // 【v1.1.1】新增房间时就能填主租户电话（此前只能进详情页再补）
+            AppLabelField(
+              label: '主租户电话',
+              hint: '选填',
+              controller: _phone,
+              keyboardType: TextInputType.phone,
+              labelWidth: _kFieldLabelWidth,
+              caption: _phone.text.trim().isEmpty || _phoneOk(_phone.text)
+                  ? '选填；在租户卡片上可一键拨打'
+                  : '⚠ 号码应为 11 位、1 开头',
+              captionColor: _phone.text.trim().isEmpty || _phoneOk(_phone.text)
+                  ? null
+                  : const Color(0xFFE5484D),
+            ),
             AppLabelField(
               label: '身份证号',
               hint: '选填',
               controller: _idCard,
               keyboardType: TextInputType.text,
               labelWidth: _kFieldLabelWidth,
+              caption: _idCard.text.trim().isEmpty || _idCardOk(_idCard.text)
+                  ? '选填；校验位不通过也能保存，仅供提醒'
+                  : '⚠ 位数或校验位不符，请核对',
+              captionColor:
+                  _idCard.text.trim().isEmpty || _idCardOk(_idCard.text)
+                      ? null
+                      : const Color(0xFFE5484D),
             ),
             _DateField(
               label: '入住日期',
@@ -386,12 +490,14 @@ class _RoomEditPageState extends State<RoomEditPage> {
     setState(() => _saving = true);
 
     // 租金：按设置周期口径填写（年付填年总额）→ 换算成月租入表，
-    // 保证「应收 = 月租 × 周期月数」的账期引擎口径不变
-    final int cycleAmount = int.tryParse(_rent.text.trim()) ?? 0;
-    final int monthlyRent = _monthlyRent;
+    // 保证「应收 = 月租 × 周期月数」的账期引擎口径不变。
+    // 【v1.1.1】月租保留小数：7600 ÷ 12 = 633.333…，应收处再四舍五入回 7600，
+    // 此前取整成 633 会让年付凭空少 4 元（633 × 12 = 7596）。
+    final double monthlyRent = _monthlyRent;
 
     final Room room = Room(
       roomNo: roomNo,
+      floor: _floor.text.trim(),
       rent: monthlyRent,
       paid: int.tryParse(_paid.text.trim()) ?? 0,
       roomType: _roomType.text.trim(),
@@ -432,10 +538,10 @@ class _RoomEditPageState extends State<RoomEditPage> {
       // 年付即月租 × 12；未到期：仅记录本周期实收，不产生每月欠租）
       await PaymentRepository.instance.syncRent(room);
 
-      // 主租户姓名 / 身份证与 people 表联动（有则同步 / 无则补一条主租户，
-      // 身份证跟随租户本人存储）
+      // 主租户姓名 / 电话 / 身份证与 people 表联动（有则同步 / 无则补一条
+      // 主租户；电话、身份证跟随租户本人存储）
       await PersonRepository.instance
-          .syncFromRoom(roomNo, room.tenant, room.idCard);
+          .syncFromRoom(roomNo, room.tenant, room.idCard, _phone.text.trim());
     } catch (e) {
       if (mounted) AppSnackbar.show('保存失败：房间号可能已存在');
       setState(() => _saving = false);
@@ -444,11 +550,7 @@ class _RoomEditPageState extends State<RoomEditPage> {
 
     if (!mounted) return;
     setState(() => _saving = false);
-    // 周期金额不是月数整数倍时会向下取整入账，明确告知避免「少了几块」的疑惑
-    final bool rounded = _cycle > 1 && cycleAmount % _cycle != 0;
-    AppSnackbar.show(rounded
-        ? '房间 $roomNo 已保存（按月租 ¥$monthlyRent 入账）'
-        : '房间 $roomNo 已保存');
+    AppSnackbar.show('房间 $roomNo 已保存');
     Navigator.of(context).pop();
   }
 }
@@ -628,9 +730,137 @@ class _RoomTypeFieldState extends State<_RoomTypeField> {
       if (ok == true && ctrl.text.trim().isNotEmpty) {
         controller.text = ctrl.text.trim();
       }
-      ctrl.dispose();
+      // 同 settings_edit：对话框退出动画期间内部仍持有该 controller，不手动
+      // dispose（否则抛 "used after being disposed"，真机闪红屏 / 弹回首页）。
     } else {
       controller.text = v;
     }
+  }
+}
+
+/// 【v1.1.1】楼层下拉框：一楼常是店面、房号并不叫 101，楼层需要能自定义。
+///
+/// 下拉给出 1 ~ 20 层，另附「自定义…」弹窗手输（一楼 / 店面 / 阁楼）；
+/// 留空表示继续按房号推导（101 → 1 层）。
+class _FloorField extends StatefulWidget {
+  const _FloorField({required this.controller, required this.labelWidth});
+
+  final TextEditingController controller;
+  final double labelWidth;
+
+  /// 手输楼层的占位标记，选中它才弹输入框
+  static const String kCustom = '自定义…';
+
+  @override
+  State<_FloorField> createState() => _FloorFieldState();
+}
+
+class _FloorFieldState extends State<_FloorField> {
+  TextEditingController get controller => widget.controller;
+
+  @override
+  void initState() {
+    super.initState();
+    controller.addListener(_sync);
+  }
+
+  @override
+  void dispose() {
+    controller.removeListener(_sync);
+    super.dispose();
+  }
+
+  void _sync() {
+    if (mounted) setState(() {});
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final MiuixColors c = MiuixTheme.of(context).colors;
+    final String v = controller.text.trim();
+    // 数字楼层补「层」显示，自定义值（一楼 / 店面）原样显示
+    final String shown =
+        v.isEmpty ? '' : (int.tryParse(v) != null ? '$v 层' : v);
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 12),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.center,
+        children: <Widget>[
+          Padding(
+            padding: const EdgeInsets.only(right: 10),
+            child: SizedBox(
+              width: widget.labelWidth,
+              child: MiuixText(
+                '楼层',
+                fontSize: 14,
+                fontWeight: FontWeight.w600,
+                color: c.onSurfaceContainer,
+              ),
+            ),
+          ),
+          Expanded(
+            child: Stack(
+              children: <Widget>[
+                MiuixTextField(
+                  // 空值时以占位提示「按房号推导」，有值后显示楼层
+                  label: shown.isEmpty ? '按房号推导' : '',
+                  useLabelAsPlaceholder: true,
+                  controller: controller,
+                  readOnly: true,
+                  singleLine: true,
+                  trailingIcon: MiuixIcon(
+                    icon: Icons.arrow_drop_down_rounded,
+                    size: 28,
+                    tint: c.onSurfaceVariantSummary,
+                  ),
+                ),
+                // readOnly 输入框收不到点击，整框补一层手势
+                Positioned.fill(
+                  child: GestureDetector(
+                    behavior: HitTestBehavior.translucent,
+                    onTap: () => _pick(context),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _pick(BuildContext context) async {
+    final String current = controller.text.trim();
+    final List<MapEntry<String, String>> options = <MapEntry<String, String>>[
+      const MapEntry<String, String>('', '按房号推导'),
+      for (int i = 1; i <= _RoomEditPageState._maxFloorOption; i++)
+        MapEntry<String, String>('$i', '$i 层'),
+      if (current.isNotEmpty &&
+          int.tryParse(current) == null) // 自定义值也给一个勾选项
+        MapEntry<String, String>(current, current),
+      const MapEntry<String, String>(_FloorField.kCustom, _FloorField.kCustom),
+    ];
+    final String? v = await showOptionPicker<String>(
+      context,
+      title: '选择楼层',
+      current: current,
+      options: options,
+    );
+    if (v == null || !context.mounted) return;
+    if (v != _FloorField.kCustom) {
+      controller.text = v;
+      return;
+    }
+    final TextEditingController ctrl = TextEditingController(text: current);
+    final bool? ok = await showAppDialog(
+      context,
+      title: '自定义楼层',
+      summary: '填写任意楼层名称，如「一楼」「店面」「阁楼」',
+      content: AppTextField(label: '楼层名称', controller: ctrl),
+    );
+    if (ok == true && ctrl.text.trim().isNotEmpty) {
+      controller.text = ctrl.text.trim();
+    }
+    // 同 _RoomTypeField：对话框退出动画期间仍持有该 controller，不手动 dispose
   }
 }

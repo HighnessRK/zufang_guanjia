@@ -172,6 +172,28 @@ class _BillingSettingsPageState extends State<BillingSettingsPage> {
               ),
             ),
             const SizedBox(height: 12),
+            const SectionTitle('房间'),
+            GlassCard(
+              padding: EdgeInsets.zero,
+              child: Column(
+                children: <Widget>[
+                  MiuixBasicComponent(
+                    title: '到期日期自动顺延一年',
+                    summary: cfg.autoExpire
+                        ? '改入住日期时，到期日期自动算成「入住 + 1 年」'
+                        : '已关闭：到期日期完全手动填写',
+                    onClick: () => cfg.update(autoExpire: !cfg.autoExpire),
+                    endActions: <Widget>[
+                      MiuixSwitch(
+                        value: cfg.autoExpire,
+                        onChanged: (bool v) => cfg.update(autoExpire: v),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 12),
             MiuixText(
               '房租应收 = 月租 × 周期月数（年付即一次收 12 个月）；'
               '水电费全楼层统一收：到达收水/收电日期后，'

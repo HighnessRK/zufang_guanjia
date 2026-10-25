@@ -132,21 +132,14 @@ class _MeterPageState extends State<MeterPage> {
   //===================== 楼层分组 =====================
 
   /// 楼层推导（口径统一收进 [Room.floorOf]，房间管理页共用）
-  static String _floorOf(String roomNo) => Room.floorOf(roomNo);
-
-  /// 楼层 → 房间列表（楼层号升序，「—」最后；层内按房号排序）
+  /// 楼层 → 房间列表（自定义楼层优先；数字楼层升序 → 汉字序数 →
+  /// 其他文本 → 「—」最后；层内按房号排序）。与房间管理页同口径。
   List<MapEntry<String, List<Room>>> _floors() {
     final Map<String, List<Room>> m = <String, List<Room>>{};
     for (final Room r in _rooms) {
-      m.putIfAbsent(_floorOf(r.roomNo), () => <Room>[]).add(r);
+      m.putIfAbsent(r.floorKey, () => <Room>[]).add(r);
     }
-    final List<String> keys = m.keys.toList()
-      ..sort((String a, String b) {
-        final int na = int.tryParse(a) ?? 9999;
-        final int nb = int.tryParse(b) ?? 9999;
-        if (na != nb) return na.compareTo(nb);
-        return a.compareTo(b);
-      });
+    final List<String> keys = m.keys.toList()..sort(Room.floorCompare);
     return keys
         .map((String k) => MapEntry<String, List<Room>>(
               k,
@@ -156,12 +149,13 @@ class _MeterPageState extends State<MeterPage> {
   }
 
   List<Room> _roomsOf(String floor) =>
-      _rooms.where((Room r) => _floorOf(r.roomNo) == floor).toList()
+      _rooms.where((Room r) => r.floorKey == floor).toList()
         ..sort((Room a, Room b) => a.roomNo.compareTo(b.roomNo));
 
-  /// 楼层展示名：'—'（房号无数字的房间）显示为「其他房间」
+  /// 楼层展示名：数字楼层补「层」，自定义楼层（一楼 / 店面）原样显示，
+  /// '—'（房号无数字的房间）显示为「其他房间」
   String _floorName(String? floor) =>
-      floor == null || floor == '—' ? '其他房间' : '$floor 层';
+      floor == null ? '其他房间' : Room.floorName(floor);
 
   //===================== 实时计算与修改统计 =====================
 
@@ -618,7 +612,10 @@ class _MeterPageState extends State<MeterPage> {
         opacity: busy ? 0.75 : 1,
         child: Container(
           height: 42,
-          padding: const EdgeInsets.symmetric(horizontal: 12),
+          // 【v1.1.1 修复】padding 12→8、图标与文字间距 8→6，并把文字包进
+          // Flexible + ellipsis：楼层整排按钮里「整层拍电表」这类长标签此前
+          // 直接把胶囊撑破，右侧漏出黄黑溢出条（RIGHT OVERFLOWED BY 7）。
+          padding: const EdgeInsets.symmetric(horizontal: 8),
           decoration: BoxDecoration(
             gradient: LinearGradient(
               begin: Alignment.centerLeft,
@@ -644,12 +641,16 @@ class _MeterPageState extends State<MeterPage> {
                       ),
                     )
                   : Icon(icon, size: 17, color: main),
-              const SizedBox(width: 8),
-              MiuixText(
-                busy ? '识别中…' : label,
-                fontSize: 13,
-                fontWeight: FontWeight.w600,
-                color: main,
+              const SizedBox(width: 6),
+              Flexible(
+                child: MiuixText(
+                  busy ? '识别中…' : label,
+                  fontSize: 13,
+                  fontWeight: FontWeight.w600,
+                  color: main,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
               ),
               if (ai) ...<Widget>[
                 const SizedBox(width: 6),

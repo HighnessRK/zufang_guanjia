@@ -117,20 +117,16 @@ class _RoomsPageState extends State<RoomsPage> {
     }).toList();
   }
 
-  /// 按楼层分组（与抄表页同一套口径 [Room.floorOf]）。
-  /// 返回值顺序：楼层号升序、「—」（房号无数字）排最后；层内按房号排序。
+  /// 按楼层分组（与抄表页同一套口径 [Room.floorKey]：自定义楼层优先，
+  /// 为空才按房号推导 101 → 1）。
+  /// 返回值顺序：数字楼层升序 → 汉字序数（一楼 < 二楼）→ 其他文本 →
+  /// 「—」排最后；层内按房号排序。
   List<MapEntry<String, List<Room>>> _floorsOf(List<Room> rooms) {
     final Map<String, List<Room>> m = <String, List<Room>>{};
     for (final Room r in rooms) {
-      m.putIfAbsent(Room.floorOf(r.roomNo), () => <Room>[]).add(r);
+      m.putIfAbsent(r.floorKey, () => <Room>[]).add(r);
     }
-    final List<String> keys = m.keys.toList()
-      ..sort((String a, String b) {
-        final int na = int.tryParse(a) ?? 9999;
-        final int nb = int.tryParse(b) ?? 9999;
-        if (na != nb) return na.compareTo(nb);
-        return a.compareTo(b);
-      });
+    final List<String> keys = m.keys.toList()..sort(Room.floorCompare);
     return keys
         .map((String k) => MapEntry<String, List<Room>>(
               k,
@@ -273,13 +269,18 @@ class _RoomsPageState extends State<RoomsPage> {
     final bool utilDue = utilOwed > 0;
     final bool utilAccum = !utilDue && room.utilityFee > 0;
 
-    return GlassCard(
-      borderRadius: 20,
-      padding: const EdgeInsets.symmetric(vertical: 4),
-      onPressed: () => _openDetail(room.roomNo),
-      child: Column(
-        children: <Widget>[
-          MiuixBasicComponent(
+    return GestureDetector(
+      // 【v1.1.1】长按房间卡片出「编辑 / 复制」快捷菜单：
+      // 编辑 = 进编辑页；复制 = 沿用该房配置（楼层 / 房型 / 租金 / 押金 /
+      // 家电）开一间新房，不用一间间重录。
+      onLongPress: () => _roomActions(room),
+      child: GlassCard(
+        borderRadius: 20,
+        padding: const EdgeInsets.symmetric(vertical: 4),
+        onPressed: () => _openDetail(room.roomNo),
+        child: Column(
+          children: <Widget>[
+            MiuixBasicComponent(
             startAction: Container(
               width: 42,
               height: 42,
@@ -367,15 +368,17 @@ class _RoomsPageState extends State<RoomsPage> {
           ),
         ],
       ),
-    );
+    ),
+  );
   }
 
   /// 租金文案：随设置的房租周期变化（年付显示年总额，月付显示月租），
   /// 与房间编辑页填写口径一致。
   String _rentSummary(Room room) {
     final int cycle = AppConfig.instance.rentCycle;
-    if (cycle <= 1) return '租金 ¥${room.rent}/月';
-    return '租金 ¥${room.rent * cycle}/${AppConfig.cycleUnit(cycle)}';
+    if (cycle <= 1) return '租金 ¥${room.rent.round()}/月';
+    // 先乘后取整：年付 7600 ÷ 12 = 633.333… 也能原样显示 7600
+    return '租金 ¥${(room.rent * cycle).round()}/${AppConfig.cycleUnit(cycle)}';
   }
 
   //========================= 跳转 ============================
@@ -401,6 +404,31 @@ class _RoomsPageState extends State<RoomsPage> {
   void _openCollectPanel() {
     // 收款面板已是底部 Tab（3）：跨 Tab 直接切过去
     AppShellScope.of(context).switchTab(3);
+  }
+
+  /// 【v1.1.1】长按房间卡片的快捷菜单：编辑 / 复制为新房。
+  /// 复制沿用该房的楼层、房型、租金、押金、钥匙磁卡与配套家电，
+  /// 新房号留空待填；租户、抄表、实付不带过去（新房是空的）。
+  Future<void> _roomActions(Room room) async {
+    final String? act = await showOptionPicker<String>(
+      context,
+      title: '房间 ${room.roomNo}',
+      current: '',
+      options: const <MapEntry<String, String>>[
+        MapEntry<String, String>('edit', '编辑房间'),
+        MapEntry<String, String>('copy', '复制为新房（沿用配置）'),
+      ],
+    );
+    if (act == null || !mounted) return;
+    if (act == 'edit') {
+      await Navigator.of(context).push(
+          AppPageRoute<void>(
+              builder: (_) => RoomEditPage(roomNo: room.roomNo)));
+    } else {
+      await Navigator.of(context).push(
+          AppPageRoute<void>(builder: (_) => RoomEditPage(copyFrom: room)));
+    }
+    if (mounted) _load();
   }
 }
 

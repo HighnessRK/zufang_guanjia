@@ -953,10 +953,18 @@ Future<T?> showOptionPicker<T>(
         title: title,
         summary: summary,
         onDismissRequest: () => Navigator.of(ctx).pop(),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: <Widget>[
-            for (int i = 0; i < options.length; i++) ...<Widget>[
+        // MiuixOverlayDialog 只给内容一个 maxHeight 约束、超出直接裁切且不滚动，
+        // 选项一多（楼层下拉 1~20 层 + 自定义共 22 项）最后一项「自定义…」会被
+        // 掉在屏幕外点不到，还会漏出黄黑溢出条。这里给列表一个**确定高度**：
+        // 短列表高度即自然高度、不显多余留白；长列表封顶后自行滚动。
+        // （必须是紧高度：松约束下 Viewport 不会收敛，父 Column 仍会报溢出。）
+        content: SizedBox(
+          height: (options.length * 48.0 + 8).clamp(120.0, 420.0),
+          child: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: <Widget>[
+                for (int i = 0; i < options.length; i++) ...<Widget>[
               if (i != 0) const MiuixHorizontalDivider(),
               GestureDetector(
                 behavior: HitTestBehavior.opaque,
@@ -986,6 +994,8 @@ Future<T?> showOptionPicker<T>(
               ),
             ],
           ],
+        ),
+        ),
         ),
       );
     },
@@ -1475,8 +1485,8 @@ class AppTextField extends StatefulWidget {
     this.leadingIcon,
     this.trailingIcon,
     this.autofocus = false,
+    this.clearComposing = false,
   });
-
   final String label;
   final TextEditingController controller;
   final TextInputType? keyboardType;
@@ -1490,6 +1500,13 @@ class AppTextField extends StatefulWidget {
   final Widget? trailingIcon;
 
   final bool autofocus;
+
+  /// 纯 ASCII 输入（电话 / 身份证）专用：退格后输入法的 composing 区间仍
+  /// 指向旧长度，续打一个字符会把刚删掉的字符一并写回（真机复现：
+  /// 13800138000 → 退格 3 次 → 13800138 → 输入 5 → 138001380005）。
+  /// 置 true 时每次变更把 composing 归零，强制输入法以纯文本模式续写；
+  /// 姓名这类要走中文拼音合成的输入框**不要**开启。
+  final bool clearComposing;
 
   @override
   State<AppTextField> createState() => _AppTextFieldState();
@@ -1538,7 +1555,18 @@ class _AppTextFieldState extends State<AppTextField> {
         autofocus: widget.autofocus,
         keyboardType: widget.keyboardType,
         singleLine: true,
-        onChanged: widget.onChanged,
+        onChanged: (String v) {
+          // 见 clearComposing：纯 ASCII 字段退格后清掉 composing，防止输入法
+          // 按旧长度把删掉的字符写回来
+          if (widget.clearComposing) {
+            final TextEditingValue cur = widget.controller.value;
+            if (cur.composing.isValid) {
+              widget.controller.value =
+                  TextEditingValue(text: cur.text, selection: cur.selection);
+            }
+          }
+          widget.onChanged?.call(v);
+        },
         leadingIcon: widget.leadingIcon,
         trailingIcon: widget.trailingIcon,
         useLabelAsPlaceholder: true,
@@ -1563,6 +1591,7 @@ class AppLabelField extends StatefulWidget {
     this.trailingIcon,
     this.labelWidth = 92,
     this.caption,
+    this.captionColor,
     this.autofocus = false,
   });
 
@@ -1585,6 +1614,9 @@ class AppLabelField extends StatefulWidget {
 
   /// 框下方的灰色小字说明（如房租周期换算口径）
   final String? caption;
+
+  /// caption 文字颜色；为空用默认灰。传警示色即可做成实时校验提示。
+  final Color? captionColor;
 
   final bool autofocus;
 
@@ -1673,7 +1705,7 @@ class _AppLabelFieldState extends State<AppLabelField> {
               child: MiuixText(
                 widget.caption!,
                 fontSize: 11,
-                color: c.onSurfaceVariantSummary,
+                color: widget.captionColor ?? c.onSurfaceVariantSummary,
               ),
             ),
         ],

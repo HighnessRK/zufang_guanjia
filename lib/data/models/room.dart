@@ -3,6 +3,7 @@ class Room {
   Room({
     this.roomNo = '',
     this.rent = 0,
+    this.floor = '',
     this.paid = 0,
     this.roomType = '',
     this.tenant = '',
@@ -29,8 +30,19 @@ class Room {
   /// 房间号（文本，主键）
   String roomNo;
 
-  /// 租金（整数，元/月）
-  int rent;
+  /// 租金（小数，元/**月**）。
+  ///
+  /// 【v1.1.1 起由 int 改 double】此前按「年付 7600」这类整周期金额入库时，
+  /// 编辑页把金额除以周期再**取整**（7600 ÷ 12 = 633），应收又按
+  /// 633 × 12 = 7596 算，凭空少 4 元。改用小数保留 7600 ÷ 12 = 633.333…，
+  /// 应收处再四舍五入回 7600，年付 / 季付都不再丢精度。
+  /// （SQLite 的 INTEGER 亲和列可直接存 REAL，无需迁移。）
+  double rent;
+
+  /// 自定义楼层（文本，如「一楼」「店面」）。
+  /// 为空时按房号推导（见 [floorKey]）；设置自定义值后优先使用，
+  /// 让「一楼是店面、不叫 101」这类房间也能单独成组。
+  String floor;
 
   /// 实付（整数，本月实际收到的房租）
   int paid;
@@ -98,7 +110,8 @@ class Room {
   /// 从数据库 Map 构造
   factory Room.fromMap(Map<String, Object?> m) => Room(
         roomNo: (m['room_no'] ?? '') as String,
-        rent: (m['rent'] ?? 0) as int,
+        rent: ((m['rent'] ?? 0) as num).toDouble(),
+        floor: (m['floor'] ?? '') as String,
         paid: (m['paid'] ?? 0) as int,
         roomType: (m['room_type'] ?? '') as String,
         tenant: (m['tenant'] ?? '') as String,
@@ -126,6 +139,7 @@ class Room {
   Map<String, Object?> toMap() => <String, Object?>{
         'room_no': roomNo,
         'rent': rent,
+        'floor': floor,
         'paid': paid,
         'room_type': roomType,
         'tenant': tenant,
@@ -163,9 +177,59 @@ class Room {
     return t.substring(0, t.length - 2);
   }
 
-  /// 楼层展示名：'—'（房号无数字的房间）显示为「其他房间」
-  static String floorName(String floor) =>
-      floor == '—' ? '其他房间' : '$floor 层';
+  /// 分组用的楼层键：**自定义楼层优先**，为空才按房号推导。
+  /// 「一楼是店面、房号不叫 101」的房间设置 floor 后即自成一组。
+  String get floorKey {
+    final String f = floor.trim();
+    return f.isEmpty ? floorOf(roomNo) : f;
+  }
+
+  /// 本房间楼层的展示名（见 [floorName]）
+  String get floorLabel => floorName(floorKey);
+
+  /// 楼层展示名：数字楼层补「层」（2 → 「2 层」），自定义楼层（一楼 / 店面 /
+  /// 阁楼）原样显示，无法推导的归「其他房间」。
+  static String floorName(String floor) {
+    final String f = floor.trim();
+    if (f.isEmpty || f == '—') return '其他房间';
+    if (int.tryParse(f) != null) return '$f 层';
+    return f;
+  }
+
+  /// 汉字数字 → 序数（一楼 → 1、十楼 → 10），用于自定义楼层排序
+  static const Map<String, int> _cnOrdinal = <String, int>{
+    '一': 1,
+    '二': 2,
+    '三': 3,
+    '四': 4,
+    '五': 5,
+    '六': 6,
+    '七': 7,
+    '八': 8,
+    '九': 9,
+    '十': 10,
+  };
+
+  /// 楼层排序比较器：数字楼层按数值升序排最前，其次按汉字序数排
+  /// （一楼 < 二楼 < … < 十楼），再按文本升序，「—」（无法推导）排最后。
+  /// 房间管理页 / 抄表页共用，保证两边楼层顺序一致。
+  static int floorCompare(String a, String b) {
+    final String x = a.trim();
+    final String y = b.trim();
+    final int? nx = int.tryParse(x);
+    final int? ny = int.tryParse(y);
+    if (nx != null && ny != null) return nx.compareTo(ny);
+    if (nx != null) return -1; // 数字楼层在前
+    if (ny != null) return 1;
+    if (x == '—') return 1;
+    if (y == '—') return -1;
+    final int? cx = _cnOrdinal[x.isEmpty ? '' : x[0]];
+    final int? cy = _cnOrdinal[y.isEmpty ? '' : y[0]];
+    if (cx != null && cy != null) return cx.compareTo(cy);
+    if (cx != null) return -1;
+    if (cy != null) return 1;
+    return x.compareTo(y);
+  }
 
   /// 配套家电汇总文案
   String get applianceText {

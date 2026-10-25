@@ -633,8 +633,13 @@ class _RoomDetailPageState extends State<RoomDetailPage> {
                 label: '电话',
                 controller: phone,
                 keyboardType: TextInputType.phone,
+                clearComposing: true,
               ),
-              AppTextField(label: '身份证（选填）', controller: idCard),
+              AppTextField(
+                label: '身份证（选填）',
+                controller: idCard,
+                clearComposing: true,
+              ),
               Padding(
                 padding: const EdgeInsets.only(top: 2),
                 child: Row(
@@ -658,9 +663,12 @@ class _RoomDetailPageState extends State<RoomDetailPage> {
 
     final String newName = name.text.trim();
     if (newName.isEmpty) {
-      name.dispose();
-      phone.dispose();
-      idCard.dispose();
+      // 【控制器释放时机】不能在这里 dispose()：showAppDialog 的 Future 在
+      // 路由 pop 的瞬间就完成，而对话框的 220ms 退出动画还没跑完，内部
+      // MiuixTextField / EditableText 仍持有这些 controller（输入法也未收起）。
+      // 此时释放会触发 "A TextEditingController was used after being disposed"，
+      // 真机表现为保存后闪一下红色报错页 / 被弹回首页。它们是局部变量，
+      // 对话框卸载后监听随之解除，交给 GC 回收即可。
       AppSnackbar.show('请填写姓名');
       return;
     }
@@ -689,9 +697,6 @@ class _RoomDetailPageState extends State<RoomDetailPage> {
             .applyPrimary(person.id!, widget.roomNo, isPrimary);
       }
     }
-    name.dispose();
-    phone.dispose();
-    idCard.dispose();
     if (!mounted) return;
     AppSnackbar.show('租户信息已保存');
     _load();
@@ -718,11 +723,14 @@ class _RoomDetailPageState extends State<RoomDetailPage> {
   String _rentRowText(Room room) {
     final int cycle = AppConfig.instance.rentCycle;
     final String unit = AppConfig.cycleUnit(cycle);
+    // 月租已改为小数（年付 7600 ÷ 12 = 633.333…），展示时先乘后四舍五入，
+    // 整周期金额原样显示 7600，不再出现 7596
+    final int monthly = room.rent.round();
     if (cycle <= 1) {
-      return '¥${room.rent} / 月（本周期已付 ¥${room.paid}）';
+      return '¥$monthly / 月（本周期已付 ¥${room.paid}）';
     }
-    final int per = room.rent * cycle;
-    return '¥$per / $unit（月租 ¥${room.rent} · 本周期已付 ¥${room.paid}）';
+    final int per = (room.rent * cycle).round();
+    return '¥$per / $unit（月租 ¥$monthly · 本周期已付 ¥${room.paid}）';
   }
 
   void _editPerson(Person person) => _addPerson(person);

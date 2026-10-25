@@ -91,7 +91,7 @@ class PaymentRepository {
         roomNo: room.roomNo,
         payType: AppConstants.payTypeRent,
         period: lastPeriod,
-        due: rentRelevant ? room.rent : 0,
+        due: rentRelevant ? room.rent.round() : 0,
         paid: room.paid,
         isSettled: !rentRelevant || room.paid >= room.rent,
         payTime: rentRelevant && room.paid >= room.rent
@@ -196,7 +196,10 @@ class PaymentRepository {
       }
     }
 
-    final int dueAmt = room.rent * months + arrears;
+    // 【v1.1.1 修复精度】月租现在是小数（年付 7600 ÷ 12 = 633.333…），
+    // 若直接 `room.rent * months` 存进整型应收，年付会变成 633×12 = 7596
+    // 凭空少 4 元。这里先乘后四舍五入，整周期应收恒等于录入金额。
+    final int dueAmt = (room.rent * months).round() + arrears;
     // 实付 = 本周期人工录入的累计实收（跨期收大额时对应合并后的应收）
     final int paidNow = room.paid;
     final bool settled = dueAmt > 0 && paidNow >= dueAmt;

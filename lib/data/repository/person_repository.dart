@@ -115,12 +115,13 @@ class PersonRepository {
   }
 
   /// 房间编辑页保存后对齐主租户：rooms.tenant 与 people 表保持一致，
-  /// 主租户姓名 / 身份证一并同步（身份证跟随租户本人，不再挂在房间上）。
+  /// 主租户姓名 / 电话 / 身份证一并同步（电话、身份证跟随租户本人，
+  /// 不再挂在房间上）。
   ///   * 姓名非空：有主租户则改名同步；有租户无主则首位升主并改名；
   ///     无租户记录则补一条主租户；
   ///   * 姓名清空：取消主租户标记（租户记录保留），房间呈空置。
-  Future<void> syncFromRoom(
-      String roomNo, String mainName, String idCard) async {
+  Future<void> syncFromRoom(String roomNo, String mainName, String idCard,
+      [String phone = '']) async {
     final List<Person> people = await byRoom(roomNo);
     Person? primary;
     for (final Person p in people) {
@@ -136,20 +137,30 @@ class PersonRepository {
       return;
     }
     if (primary != null) {
-      if (primary.name != mainName || primary.idCard != idCard) {
+      // 电话只在表单有值时覆盖，避免只是改个房型就把号码抹掉
+      final String newPhone = phone.isEmpty ? primary.phone : phone;
+      if (primary.name != mainName ||
+          primary.idCard != idCard ||
+          primary.phone != newPhone) {
         primary.name = mainName;
         primary.idCard = idCard;
+        primary.phone = newPhone;
         await update(primary);
       }
     } else if (people.isNotEmpty) {
       final Person first = people.first;
       first.name = mainName;
       first.idCard = idCard;
+      first.phone = phone.isEmpty ? first.phone : phone;
       first.isPrimary = true;
       await update(first);
     } else {
       await insert(Person(
-          roomNo: roomNo, name: mainName, idCard: idCard, isPrimary: true));
+          roomNo: roomNo,
+          name: mainName,
+          idCard: idCard,
+          phone: phone,
+          isPrimary: true));
     }
   }
 

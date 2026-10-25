@@ -4,6 +4,14 @@ import '../widgets/app_widgets.dart';
 
 /// 设置各二级页共用的参数编辑对话框与小工具。
 /// 全部走 [showAppDialog]（液态玻璃对话框），保存后由调用方自行刷新页面。
+///
+/// 【控制器释放时机】这些对话框的局部 TextEditingController 一律**不手动
+/// dispose**：showAppDialog 的 Future 在路由 pop 的瞬间就完成，而对话框的
+/// 220ms 退出动画尚未结束，内部 MiuixTextField / EditableText 仍持有该
+/// controller（输入法也未收起）。此时释放会抛
+/// "A TextEditingController was used after being disposed"，真机表现为保存后
+/// 闪一下红色报错页 / 被弹回首页（v1.1.1 修复）。它们是局部变量，对话框
+/// 卸载后监听随之解除，交给 GC 回收即可。
 
 /// 修改一个数值参数（浮点，允许 0）
 Future<void> editNumberDialog(
@@ -30,7 +38,6 @@ Future<void> editNumberDialog(
   if (v != null && v >= 0) {
     await onSave(v);
   }
-  ctrl.dispose();
 }
 
 /// 修改一个整数参数（允许 0）
@@ -57,7 +64,6 @@ Future<void> editIntDialog(
   if (v != null && v >= 0) {
     await onSave(v);
   }
-  ctrl.dispose();
 }
 
 /// 修改一个文本参数（API 地址 / Key / 模型名，允许清空）
@@ -81,7 +87,6 @@ Future<void> editTextDialog(
   );
   if (ok != true) return;
   await onSave(ctrl.text.trim());
-  ctrl.dispose();
 }
 
 /// Key 打码显示：sk-abcdef123456 → sk-a•••••3456

@@ -193,7 +193,7 @@ class McpTools {
         }
         final Room room = Room(
           roomNo: roomNo,
-          rent: _optInt(a['rent']) ?? 0,
+          rent: (_optInt(a['rent']) ?? 0).toDouble(),
           paid: _optInt(a['paid']) ?? 0,
           roomType: _optStr(a['roomType']) ?? '',
           tenant: _optStr(a['tenant']) ?? '',
@@ -724,7 +724,7 @@ class McpTools {
         for (final Room r in rooms) {
           if (r.isOccupied) {
             occupied++;
-            rentSum += r.rent;
+            rentSum += r.rent.round();
             paidSum += r.paid;
           }
           final int u = owedUtil[r.roomNo] ?? 0;
@@ -896,7 +896,7 @@ class McpTools {
     if (n == null) return;
     switch (field) {
       case 'rent':
-        room.rent = n;
+        room.rent = n.toDouble();
       case 'paid':
         room.paid = n;
       case 'deposit':

@@ -57,6 +57,10 @@ class AppConfig extends ChangeNotifier {
   /// （智能模式夏季月付、其余季付）。
   String elecCollectDate = '';
 
+  /// 【v1.1.1】入住日期一改，到期日期自动顺延一年。
+  /// 默认开启；关掉则到期日期完全手动维护。
+  bool autoExpire = true;
+
   /// 指定月份是否处于夏季（智能电费模式用）
   bool isSummerMonth(int m) {
     if (summerStart <= summerEnd) {
@@ -245,6 +249,7 @@ class AppConfig extends ChangeNotifier {
     updateSource = map['update_source'] == 'github' ? 'github' : 'gitee';
     autoCheckUpdate = map['auto_check_update'] != '0';
     updateNotify = map['update_notify'] != '0';
+    autoExpire = map['auto_expire'] != '0';
     updatePromptedVersion = map['update_prompted_version'] ?? '';
     predictiveBack = map['predictive_back'] == '1';
     mcpEnabled = map['mcp_enabled'] != '0';
@@ -323,6 +328,7 @@ class AppConfig extends ChangeNotifier {
       ..writeln('update_source=$updateSource')
       ..writeln('auto_check_update=${autoCheckUpdate ? 1 : 0}')
       ..writeln('update_notify=${updateNotify ? 1 : 0}')
+      ..writeln('auto_expire=${autoExpire ? 1 : 0}')
       ..writeln('update_prompted_version=$updatePromptedVersion')
       ..writeln('predictive_back=${predictiveBack ? 1 : 0}')
       ..writeln()
@@ -361,6 +367,7 @@ class AppConfig extends ChangeNotifier {
     String? updateSource,
     bool? autoCheckUpdate,
     bool? updateNotify,
+    bool? autoExpire,
     String? updatePromptedVersion,
     bool? predictiveBack,
     bool? mcpEnabled,
@@ -387,6 +394,7 @@ class AppConfig extends ChangeNotifier {
     this.updateSource = updateSource ?? this.updateSource;
     this.autoCheckUpdate = autoCheckUpdate ?? this.autoCheckUpdate;
     this.updateNotify = updateNotify ?? this.updateNotify;
+    this.autoExpire = autoExpire ?? this.autoExpire;
     this.updatePromptedVersion =
         updatePromptedVersion ?? this.updatePromptedVersion;
     this.predictiveBack = predictiveBack ?? this.predictiveBack;
