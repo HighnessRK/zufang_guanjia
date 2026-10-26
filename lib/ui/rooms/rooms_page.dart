@@ -90,14 +90,17 @@ class _RoomsPageState extends State<RoomsPage> {
     if (mounted) _load();
   }
 
+  int _loadId = 0;
+
   Future<void> _load() async {
+    final int id = ++_loadId;
     final List<Room> list = await RoomRepository.instance.all();
     // 待收口径：房租 = 未结清 rent 流水欠款；水电 = 未结清流水合计
     final Map<String, int> rentOwed =
         await PaymentRepository.instance.unsettledRentByRoom();
     final Map<String, int> utilOwed =
         await PaymentRepository.instance.unsettledUtilityByRoom();
-    if (!mounted) return;
+    if (!mounted || id != _loadId) return;
     setState(() {
       _all = list;
       _rentOwed = rentOwed;

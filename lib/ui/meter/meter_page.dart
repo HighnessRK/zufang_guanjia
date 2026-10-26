@@ -96,9 +96,16 @@ class _MeterPageState extends State<MeterPage> {
     _load();
   }
 
-  Future<void> _load() async {
+  int _loadId = 0;
+
+  Future<void> _load({bool afterSave = false}) async {
+    final int id = ++_loadId;
     final List<Room> rooms = await RoomRepository.instance.all();
-    if (!mounted) return;
+    final Map<String, int> owed =
+        await PaymentRepository.instance.unsettledUtilityByRoom();
+    if (!mounted || id != _loadId) return;
+    // 查询期间用户可能已经开始编辑，不能以较早快照覆盖未保存的读数。
+    if (!afterSave && _changeCount() > 0) return;
 
     // 重建输入控制器（以数据库当前值为基准）
     for (final TextEditingController c in _elecCtrls.values) {
@@ -112,8 +119,6 @@ class _MeterPageState extends State<MeterPage> {
     _elecCtrls.clear();
     _waterCtrls.clear();
     _owed.clear();
-    final Map<String, int> owed =
-        await PaymentRepository.instance.unsettledUtilityByRoom();
     _owed.addAll(owed);
     for (final Room r in rooms) {
       final TextEditingController ec =
@@ -132,7 +137,9 @@ class _MeterPageState extends State<MeterPage> {
   }
 
   /// 任意输入变化 → 重算费用行与「修改计数」
-  void _onEdit() => setState(() {});
+  void _onEdit() {
+    if (mounted) setState(() {});
+  }
 
   //===================== 楼层分组 =====================
 
@@ -469,7 +476,7 @@ class _MeterPageState extends State<MeterPage> {
 
     if (!mounted) return;
     AppSnackbar.show('已保存 $count 间房的抄表数据，水电费合计 ¥$total');
-    await _load();
+    await _load(afterSave: true);
   }
 
   //===================== 界面 =====================

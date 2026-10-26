@@ -5,8 +5,8 @@ class AppConstants {
 
   //========================= 应用信息 =========================
   static const String appName = '租房管家';
-  static const String appVersion = '1.1.4';
-  static const String appBuild = '12';
+  static const String appVersion = '1.1.5';
+  static const String appBuild = '13';
 
   /// ====== 应用内更新：Release 仓库（GitHub / Gitee 同名公开仓库）======
   static const String updateRepoName = 'zufang_guanjia';

@@ -20,6 +20,7 @@ class ReminderEngine {
   static Future<List<NoticeItem>> computeAll() async {
     final AppConfig cfg = AppConfig.instance;
     final List<Room> rooms = await RoomRepository.instance.all();
+    final owed = await PaymentRepository.instance.latestUnsettledByRoom();
     final List<NoticeItem> list = <NoticeItem>[];
 
     final DateTime now = DateTime.now();
@@ -57,8 +58,7 @@ class ReminderEngine {
       //================ 2. 房租未缴提醒 ================
       // 周期口径：只有「收租月」才会生成应收流水；有未结清流水才提醒
       if (room.isOccupied && room.rent > 0) {
-        final Payment? rentOwed = await PaymentRepository.instance
-            .latestUnsettled(room.roomNo, AppConstants.payTypeRent);
+        final Payment? rentOwed = owed[room.roomNo]?[AppConstants.payTypeRent];
         if (rentOwed != null) {
           // 进入提醒窗口：每月账单日起 remindDays 天内提醒
           final int monthDay = now.day;
@@ -85,8 +85,7 @@ class ReminderEngine {
         AppConstants.payTypeElec,
         AppConstants.payTypeUtility,
       ]) {
-        final Payment? p = await PaymentRepository.instance
-            .latestUnsettled(room.roomNo, payType);
+        final Payment? p = owed[room.roomNo]?[payType];
         if (p == null || p.due <= 0) continue;
         final String label = payType == AppConstants.payTypeWater
             ? '水费'

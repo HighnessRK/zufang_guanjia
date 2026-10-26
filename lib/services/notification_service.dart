@@ -2,6 +2,7 @@ import 'package:flutter/foundation.dart';
 
 import '../core/config/app_config.dart';
 import '../core/constants/app_constants.dart';
+import '../core/utils/refresh_queue.dart';
 import '../data/models/notice_item.dart';
 import 'native_bridge.dart';
 import 'reminder_engine.dart';
@@ -47,7 +48,11 @@ class NotificationService {
   //========================= 刷新提醒 ========================
 
   /// 重新计算提醒，并按配置推送系统通知 / 焦点通知
-  Future<void> refresh() async {
+  final RefreshQueue _refreshQueue = RefreshQueue();
+
+  Future<void> refresh() => _refreshQueue.run(_refresh);
+
+  Future<void> _refresh() async {
     final AppConfig cfg = AppConfig.instance;
     final List<NoticeItem> list = await ReminderEngine.computeAll();
     notices.value = list;

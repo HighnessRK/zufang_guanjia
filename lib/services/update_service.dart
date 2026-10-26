@@ -322,8 +322,10 @@ class UpdateService {
     final HttpClient client = HttpClient()
       ..connectionTimeout = const Duration(seconds: 15);
     try {
-      final HttpClientRequest request = await client.getUrl(Uri.parse(url));
-      final HttpClientResponse response = await request.close();
+      final HttpClientRequest request = await client.getUrl(Uri.parse(url))
+          .timeout(const Duration(seconds: 15));
+      final HttpClientResponse response = await request.close()
+          .timeout(const Duration(seconds: 20));
       if (response.statusCode != 200) {
         throw HttpException('HTTP ${response.statusCode}');
       }
@@ -333,7 +335,8 @@ class UpdateService {
       final IOSink sink = file.openWrite();
       int received = 0;
       try {
-        await for (final List<int> chunk in response) {
+        await for (final List<int> chunk in
+            response.timeout(const Duration(seconds: 30))) {
           if (isCancelled?.call() ?? false) {
             throw const HttpException('下载已取消');
           }

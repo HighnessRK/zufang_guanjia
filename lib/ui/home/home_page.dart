@@ -82,11 +82,14 @@ class _HomePageState extends State<HomePage> {
   /// 【v1.1.2 优化】首次进入才转圈；切回本 Tab / 数据总线通知时**静默**刷新。
   /// 旧实现每次都先 `setState(_loading = true)` 把整页换成转圈动画，切 Tab
   /// 时既白闪一下又白白重建整页（用户报的「切换界面偶现卡顿」来源之一）。
+  int _loadId = 0;
+
   Future<void> _load({bool showLoading = false}) async {
+    final int id = ++_loadId;
     if (showLoading && mounted) setState(() => _loading = true);
     final HomeStat stat = await ReminderEngine.computeHomeStat();
     await NotificationService.instance.refresh();
-    if (!mounted) return;
+    if (!mounted || id != _loadId) return;
     setState(() {
       _stat = stat;
       _notices = NotificationService.instance.notices.value;

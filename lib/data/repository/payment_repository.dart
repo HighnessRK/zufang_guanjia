@@ -414,11 +414,34 @@ class PaymentRepository {
 
   /// 查询某房间某类型最近一条「未结清且应收>0」的流水
   Future<Payment?> latestUnsettled(String roomNo, String payType) async {
-    final List<Payment> history = await byRoom(roomNo);
-    for (final Payment p in history) {
-      if (p.payType == payType && p.due > 0 && !p.isSettled) return p;
+    final Database db = await DatabaseHelper.instance.database;
+    final rows = await db.query(AppConstants.tablePayments,
+        where: 'room_no = ? AND pay_type = ? AND due > 0 AND is_settled = 0',
+        whereArgs: <Object?>[roomNo, payType],
+        orderBy: 'period DESC', limit: 1);
+    return rows.isEmpty ? null : Payment.fromMap(rows.first);
+  }
+
+  /// 提醒只需每房每类型最新欠费，一次查询替代逐房读取全部历史。
+  static Map<String, Map<String, Payment>> latestUnsettledIndex(
+      Iterable<Payment> payments) {
+    final result = <String, Map<String, Payment>>{};
+    for (final p in payments) {
+      if (p.due <= 0 || p.isSettled) continue;
+      final types = result.putIfAbsent(p.roomNo, () => <String, Payment>{});
+      final previous = types[p.payType];
+      if (previous == null || p.period.compareTo(previous.period) > 0) {
+        types[p.payType] = p;
+      }
     }
-    return null;
+    return result;
+  }
+
+  Future<Map<String, Map<String, Payment>>> latestUnsettledByRoom() async {
+    final Database db = await DatabaseHelper.instance.database;
+    final rows = await db.query(AppConstants.tablePayments,
+        where: 'due > 0 AND is_settled = 0', orderBy: 'period DESC');
+    return latestUnsettledIndex(rows.map(Payment.fromMap));
   }
 
   /// 全房间未结清水电费聚合：roomNo → 待收金额（due − paid 合计）。

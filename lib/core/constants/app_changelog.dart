@@ -31,6 +31,14 @@ class AppChangelog {
 
   /// 全部版本（倒序：最新在最前）
   static const List<ChangelogVersion> versions = <ChangelogVersion>[
+    ChangelogVersion('1.1.5', '2026-10-26', <ChangelogEntry>[
+      ChangelogEntry('优化', '提醒批量读取欠费，减少房间较多时的重复查询'),
+      ChangelogEntry('优化', '合并并发通知刷新，避免重复计算与通知竞争'),
+      ChangelogEntry('修复', '抄表刷新保护未保存读数，避免并发刷新覆盖'),
+      ChangelogEntry('修复', '快速切换报表日期时旧结果不再覆盖新筛选'),
+      ChangelogEntry('修复', 'API 配置删除文字后续写不再恢复旧内容'),
+      ChangelogEntry('优化', '更新下载增加响应与断流超时，避免一直等待'),
+    ]),
     ChangelogVersion('1.1.4', '2026-10-26', <ChangelogEntry>[
       ChangelogEntry('修复', '更新说明解析与中文发布编码校验'),
       ChangelogEntry('新增', '每次启动提醒新版本，每天早晚后台检查'),

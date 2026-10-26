@@ -89,13 +89,16 @@ class _CollectPanelPageState extends State<CollectPanelPage> {
     if (mounted) _load();
   }
 
+  int _loadId = 0;
+
   Future<void> _load() async {
+    final int id = ++_loadId;
     final List<Room> list = await RoomRepository.instance.all();
     final Map<String, int> rentOwed =
         await PaymentRepository.instance.unsettledRentByRoom();
     final Map<String, int> utilOwed =
         await PaymentRepository.instance.unsettledUtilityByRoom();
-    if (!mounted) return;
+    if (!mounted || id != _loadId) return;
     setState(() {
       _all = list;
       _rentOwed = rentOwed;

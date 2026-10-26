@@ -53,10 +53,13 @@ class _FeeReportPageState extends State<FeeReportPage> {
     if (mounted) _load();
   }
 
+  int _loadId = 0;
+
   Future<void> _load() async {
+    final int id = ++_loadId;
     final List<FeeTypeSum> rows = await PaymentRepository.instance
         .sumByTypeRange(DateUtil.period(_from), DateUtil.period(_to));
-    if (!mounted) return;
+    if (!mounted || id != _loadId) return;
     setState(() {
       _rows = rows;
       _loading = false;
