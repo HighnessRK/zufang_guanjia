@@ -4,6 +4,7 @@ import 'package:flutter_miuix/miuix.dart';
 import '../../core/config/app_config.dart';
 import '../../core/constants/app_constants.dart';
 import '../../core/utils/date_util.dart';
+import '../../core/utils/id_validator.dart';
 import '../../data/models/person.dart';
 import '../../data/models/room.dart';
 import '../../data/repository/payment_repository.dart';
@@ -71,22 +72,87 @@ class _RoomEditPageState extends State<RoomEditPage> {
   /// 楼层下拉可选项：1 ~ 20 层（超出可用「自定义」手输，如「一楼」「店面」）
   static const int _maxFloorOption = 20;
 
-  /// 电话号码是否合规（11 位、1 开头）——实时提示用
-  static bool _phoneOk(String v) => RegExp(r'^1\d{10}$').hasMatch(v);
+  /// 【v1.1.2】电话 / 身份证校验统一收进 [IdValidator]：1.1.1 页面自带的
+  /// 身份证码表只有 10 项、漏了 X 那一档，余数为 10 的身份证会 `check[10]`
+  /// 越界，而它跑在 `build()` 里 → 整个编辑房间页被 ErrorWidget 灰屏盖住
+  /// （真机必现）。修根因 + 把校验结果改成随输入局部刷新。
 
-  /// 身份证是否合规（18 位 + ISO 7064:1983 MOD 11-2 校验位）——实时提示用
-  static bool _idCardOk(String v) {
+  /// 租金框下方：按设置周期换算的月租小字。
+  /// 走 AppLabelField.belowBuilder —— 只重建这一小块，打字不再整页 setState。
+  Widget _rentHint(String v) {
+    final MiuixColors c = MiuixTheme.of(context).colors;
+    final double monthly = (double.tryParse(v.trim()) ?? 0) / _cycle;
+    return MiuixText(
+      _cycle <= 1
+          ? '月租 ¥${monthly.round()}'
+          : '月租 ¥${monthly.toStringAsFixed(2)} · 按「${AppConfig.cycleLabel(_cycle)}」口径填写'
+              '（${AppConfig.cycleLabel(_cycle)}即填${AppConfig.cycleLabel(_cycle)}总额，'
+              '内部按月租入账，不会少收）',
+      fontSize: 11,
+      color: c.onSurfaceVariantSummary,
+    );
+  }
+
+  /// 电话框下方：11 位格子条 + 实时校验小字
+  Widget _phoneHint(String v) {
+    final MiuixColors c = MiuixTheme.of(context).colors;
     final String t = v.trim();
-    if (!RegExp(r'^\d{17}[\dXx]$').hasMatch(t)) return false;
-    const String w = '7 9 10 5 8 4 2 1 6 3 7 9 10 5 8 4 2';
-    const List<int> check = <int>[1, 0, 9, 8, 7, 6, 5, 4, 3, 2];
-    final List<int> weights = w.split(' ').map(int.parse).toList();
-    int sum = 0;
-    for (int i = 0; i < 17; i++) {
-      sum += (t.codeUnitAt(i) - 48) * weights[i];
+    final bool empty = t.isEmpty;
+    final bool ok = IdValidator.phoneOk(t);
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      mainAxisSize: MainAxisSize.min,
+      children: <Widget>[
+        DigitSlots(text: t, total: 11, ok: IdValidator.phoneProgress(t)),
+        Padding(
+          padding: const EdgeInsets.only(top: 4),
+          child: MiuixText(
+            empty
+                ? '选填；在租户卡片上可一键拨打'
+                : (ok ? '✓ 11 位号码正确' : '⚠ 号码应为 11 位、1 开头'),
+            fontSize: 11,
+            color: (empty || ok) ? c.onSurfaceVariantSummary : c.error,
+          ),
+        ),
+      ],
+    );
+  }
+
+  /// 身份证框下方：18 位格子条（前 2 位命中区划时补省份）+ 实时校验小字
+  Widget _idHint(String v) {
+    final MiuixColors c = MiuixTheme.of(context).colors;
+    final String t = v.trim();
+    final bool empty = t.isEmpty;
+    final bool ok = IdValidator.idOk(t);
+    final String? province = IdValidator.idProvince(t);
+    final Color color;
+    final String caption;
+    if (empty) {
+      color = c.onSurfaceVariantSummary;
+      caption = '选填；校验位不通过也能保存，仅供提醒';
+    } else if (ok) {
+      color = const Color(0xFF34C759);
+      caption = '✓18 位身份证校验通过${province == null ? '' : '（$province）'}';
+    } else {
+      color = c.error;
+      caption = '⚠ 位数或校验位不符，请核对';
     }
-    final String last = t[17].toUpperCase();
-    return last == (check[sum % 11] == 10 ? 'X' : '${check[sum % 11]}');
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      mainAxisSize: MainAxisSize.min,
+      children: <Widget>[
+        DigitSlots(
+          text: t,
+          total: 18,
+          ok: IdValidator.idProgress(t),
+          province: province,
+        ),
+        Padding(
+          padding: const EdgeInsets.only(top: 4),
+          child: MiuixText(caption, fontSize: 11, color: color),
+        ),
+      ],
+    );
   }
 
   /// 周期累计水/电费（编辑模式，水收费结算区显示与结算用）
@@ -114,17 +180,11 @@ class _RoomEditPageState extends State<RoomEditPage> {
     _heater = TextEditingController();
     _fridge = TextEditingController();
     _washer = TextEditingController();
-    // 边输入边刷新「月租」换算小字（租金按设置周期口径展示）
-    _rent.addListener(_onRentChanged);
-    // 边输入边刷新电话 / 身份证的实时校验小字与入住日期联动的到期日
-    _phone.addListener(_onRentChanged);
-    _idCard.addListener(_onRentChanged);
+    // 【v1.1.2 优化】租金 / 电话 / 身份证不再整页 setState：换算小字与实时
+    // 校验改由各字段的 belowBuilder 局部刷新（打字时只重建那一小块）。
+    // 只保留入住日期 → 到期日的联动监听。
     _checkIn.addListener(_onCheckInChanged);
     _fill();
-  }
-
-  void _onRentChanged() {
-    if (mounted) setState(() {});
   }
 
   /// 【v1.1.1】入住日期一改，到期日期自动顺延一年（可在设置里关闭）。
@@ -192,15 +252,18 @@ class _RoomEditPageState extends State<RoomEditPage> {
 
   @override
   void dispose() {
-    _rent.removeListener(_onRentChanged);
+    // 【v1.1.2】补上 _floor / _phone 的释放（1.1.1 漏了这两个，控制器一直
+    // 挂在页面外，监听随 State 卸载虽已无害，但属于实打实的泄漏）
     _roomNo.dispose();
     _rent.dispose();
     _paid.dispose();
     _roomType.dispose();
     _tenant.dispose();
+    _phone.dispose();
     _idCard.dispose();
     _checkIn.dispose();
     _expire.dispose();
+    _floor.dispose();
     _deposit.dispose();
     _keyCount.dispose();
     _cardCount.dispose();
@@ -253,11 +316,8 @@ class _RoomEditPageState extends State<RoomEditPage> {
               controller: _rent,
               keyboardType: TextInputType.number,
               labelWidth: _kFieldLabelWidth,
-              caption: _cycle <= 1
-                  ? '月租 ¥${_monthlyRent.round()}'
-                  : '月租 ¥${_monthlyRent.toStringAsFixed(2)} · 按「${AppConfig.cycleLabel(_cycle)}」口径填写'
-                      '（${AppConfig.cycleLabel(_cycle)}即填${AppConfig.cycleLabel(_cycle)}总额，'
-                      '内部按月租入账，不会少收）',
+              // 换算小字改由字段自己随输入刷新（不再整页 setState）
+              belowBuilder: _rentHint,
             ),
             AppLabelField(
               label: '实付（本周期）',
@@ -287,12 +347,8 @@ class _RoomEditPageState extends State<RoomEditPage> {
               controller: _phone,
               keyboardType: TextInputType.phone,
               labelWidth: _kFieldLabelWidth,
-              caption: _phone.text.trim().isEmpty || _phoneOk(_phone.text)
-                  ? '选填；在租户卡片上可一键拨打'
-                  : '⚠ 号码应为 11 位、1 开头',
-              captionColor: _phone.text.trim().isEmpty || _phoneOk(_phone.text)
-                  ? null
-                  : const Color(0xFFE5484D),
+              // 【v1.1.2】11 位格子条 + 实时校验小字，随输入局部刷新
+              belowBuilder: _phoneHint,
             ),
             AppLabelField(
               label: '身份证号',
@@ -300,13 +356,9 @@ class _RoomEditPageState extends State<RoomEditPage> {
               controller: _idCard,
               keyboardType: TextInputType.text,
               labelWidth: _kFieldLabelWidth,
-              caption: _idCard.text.trim().isEmpty || _idCardOk(_idCard.text)
-                  ? '选填；校验位不通过也能保存，仅供提醒'
-                  : '⚠ 位数或校验位不符，请核对',
-              captionColor:
-                  _idCard.text.trim().isEmpty || _idCardOk(_idCard.text)
-                      ? null
-                      : const Color(0xFFE5484D),
+              // 【v1.1.2】18 位格子条（含省份）+ 实时校验小字，随输入局部刷新；
+              // 校验改走 IdValidator，修掉 1.1.1 码表越界导致的整页灰屏
+              belowBuilder: _idHint,
             ),
             _DateField(
               label: '入住日期',
@@ -318,6 +370,8 @@ class _RoomEditPageState extends State<RoomEditPage> {
               hint: '点右侧图标选择',
               controller: _expire,
             ),
+            // 【v1.1.2】配套与资产一律改成 DomainUpDown 式「− 数值 +」计数器：
+            // 只读 + 步进钮，点按 ±1、长按连发，全程不唤起输入法
             const SectionTitle('配套与资产'),
             AppLabelField(
               label: '钥匙数量（把）',
@@ -325,6 +379,7 @@ class _RoomEditPageState extends State<RoomEditPage> {
               controller: _keyCount,
               keyboardType: TextInputType.number,
               labelWidth: _kFieldLabelWidth,
+              stepper: const StepperRange(min: 0, max: 99),
             ),
             AppLabelField(
               label: '大门磁卡（张）',
@@ -332,6 +387,7 @@ class _RoomEditPageState extends State<RoomEditPage> {
               controller: _cardCount,
               keyboardType: TextInputType.number,
               labelWidth: _kFieldLabelWidth,
+              stepper: const StepperRange(min: 0, max: 99),
             ),
             AppLabelField(
               label: '空调（台）',
@@ -339,6 +395,7 @@ class _RoomEditPageState extends State<RoomEditPage> {
               controller: _ac,
               keyboardType: TextInputType.number,
               labelWidth: _kFieldLabelWidth,
+              stepper: const StepperRange(min: 0, max: 99),
             ),
             AppLabelField(
               label: '热水器（台）',
@@ -346,6 +403,7 @@ class _RoomEditPageState extends State<RoomEditPage> {
               controller: _heater,
               keyboardType: TextInputType.number,
               labelWidth: _kFieldLabelWidth,
+              stepper: const StepperRange(min: 0, max: 99),
             ),
             AppLabelField(
               label: '冰箱（台）',
@@ -353,6 +411,7 @@ class _RoomEditPageState extends State<RoomEditPage> {
               controller: _fridge,
               keyboardType: TextInputType.number,
               labelWidth: _kFieldLabelWidth,
+              stepper: const StepperRange(min: 0, max: 99),
             ),
             AppLabelField(
               label: '洗衣机（台）',
@@ -360,6 +419,7 @@ class _RoomEditPageState extends State<RoomEditPage> {
               controller: _washer,
               keyboardType: TextInputType.number,
               labelWidth: _kFieldLabelWidth,
+              stepper: const StepperRange(min: 0, max: 99),
             ),
             if (_isEdit) ...<Widget>[
               const SectionTitle('水收费结算'),

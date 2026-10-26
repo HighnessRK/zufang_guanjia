@@ -332,7 +332,11 @@ class _TabView extends StatelessWidget {
             scale: selected ? 1 : 0.97,
             duration: const Duration(milliseconds: 240),
             curve: Curves.easeOutCubic,
-            child: child,
+            // 【v1.1.2 优化】给每个 Tab 一层光栅边界：交叉淡入淡出的 240ms 里，
+            // 页面的极光背景 + 十几张玻璃卡模糊层本该逐帧重画两遍；有了边界，
+            // 引擎可把整页缓成一张纹理，切换时只做合成（缩放 / 透明度），
+            // 掉帧与发热都明显下降，视觉完全一致。
+            child: RepaintBoundary(child: child),
           ),
         ),
       ),

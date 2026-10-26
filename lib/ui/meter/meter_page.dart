@@ -16,6 +16,7 @@ import '../widgets/app_widgets.dart';
 
 /// 水电抄录页（核心高频功能）——按楼层组织：
 ///   每层卡片：【整层拍电表 · AI 统一识别多块表】/【整层录水表 · 批量输入】
+///             /【整层录电表 · 批量输入（v1.1.2 冗余入口）】
 ///   每间房行：单房间拍照 / 水表输入 / 已收徽章 / 实时费用
 ///   底部一键保存全部修改。
 ///
@@ -57,6 +58,10 @@ class _MeterPageState extends State<MeterPage> {
   /// 整层录水表批量输入表单
   bool _waterSheetVisible = false;
   String? _waterSheetFloor;
+
+  /// 【v1.1.2】整层录电表批量输入表单（水表表单的冗余备份入口）
+  bool _elecSheetVisible = false;
+  String? _elecSheetFloor;
 
   bool _loading = true;
 
@@ -365,6 +370,38 @@ class _MeterPageState extends State<MeterPage> {
     });
   }
 
+  /// 【v1.1.2】整层录电表：与水表同构的批量输入冗余入口
+  void _openElecSheet(String floor) {
+    setState(() {
+      _elecSheetVisible = true;
+      _elecSheetFloor = floor;
+    });
+  }
+
+  /// 批量表单「填入本层输入框」的公共落地：把值写进目标控制器并统计变化数
+  void _applySheet(
+    Map<String, String> values,
+    Map<String, TextEditingController> ctrls, {
+    required VoidCallback onHide,
+    required String unitLabel,
+  }) {
+    int changed = 0;
+    setState(() {
+      values.forEach((String roomNo, String v) {
+        if ((ctrls[roomNo]?.text.trim() ?? '') != v) {
+          changed++;
+        }
+        ctrls[roomNo]?.text = v;
+      });
+      onHide();
+    });
+    if (changed == 0) {
+      AppSnackbar.show('读数没有变化');
+    } else {
+      AppSnackbar.show('已填入 $changed 间房的$unitLabel读数，请核对后保存');
+    }
+  }
+
   //===================== 一键保存全部 =====================
 
   Future<void> _saveAll() async {
@@ -513,33 +550,51 @@ class _MeterPageState extends State<MeterPage> {
                 height: 470,
                 child: _waterSheetFloor == null
                     ? const SizedBox.shrink()
-                    : _WaterFloorSheet(
+                    : _FloorSheet(
                         key: ValueKey<String>('water_${_waterSheetFloor ?? ''}'),
                         rooms: _roomsOf(_waterSheetFloor!),
                         prefill: <String, String>{
                           for (final Room r in _roomsOf(_waterSheetFloor!))
                             r.roomNo: _waterCtrls[r.roomNo]?.text.trim() ?? '',
                         },
-                        onConfirm: (Map<String, String> values) {
-                          // 只统计与当前值不同的房间（预填 0 未改不算填入）
-                          int changed = 0;
-                          setState(() {
-                            values.forEach((String roomNo, String v) {
-                              if ((_waterCtrls[roomNo]?.text.trim() ?? '') !=
-                                  v) {
-                                changed++;
-                              }
-                              _waterCtrls[roomNo]?.text = v;
-                            });
-                            _waterSheetVisible = false;
-                          });
-                          if (changed == 0) {
-                            AppSnackbar.show('读数没有变化');
-                          } else {
-                            AppSnackbar.show(
-                                '已填入 $changed 间房的水表读数，请核对后保存');
-                          }
+                        onConfirm: (Map<String, String> values) => _applySheet(
+                          values,
+                          _waterCtrls,
+                          onHide: () => _waterSheetVisible = false,
+                          unitLabel: '水表',
+                        ),
+                      ),
+              ),
+            ),
+
+            //=============== 整层录电表：批量输入（冗余入口） ===============
+            MiuixOverlayBottomSheet(
+              show: _elecSheetVisible && _elecSheetFloor != null,
+              title: '${_floorName(_elecSheetFloor)} · 批量录入电表',
+              onDismissRequest: () =>
+                  setState(() => _elecSheetVisible = false),
+              content: SizedBox(
+                height: 470,
+                child: _elecSheetFloor == null
+                    ? const SizedBox.shrink()
+                    : _FloorSheet(
+                        key: ValueKey<String>('elec_${_elecSheetFloor ?? ''}'),
+                        rooms: _roomsOf(_elecSheetFloor!),
+                        prefill: <String, String>{
+                          for (final Room r in _roomsOf(_elecSheetFloor!))
+                            r.roomNo: _elecCtrls[r.roomNo]?.text.trim() ?? '',
                         },
+                        unit: '度',
+                        icon: Icons.bolt_rounded,
+                        accent: const Color(0xFF7B5CFF),
+                        intro: '按电表表盘数字填写本层各房间本期读数，留空表示暂不录入：',
+                        prevOf: (Room r) => r.elecPrev,
+                        onConfirm: (Map<String, String> values) => _applySheet(
+                          values,
+                          _elecCtrls,
+                          onHide: () => _elecSheetVisible = false,
+                          unitLabel: '电表',
+                        ),
                       ),
               ),
             ),
@@ -580,6 +635,19 @@ class _MeterPageState extends State<MeterPage> {
                   busy: false,
                   colors: const <Color>[Color(0xFF3FC1FF), Color(0xFF2A7BFF)],
                   onTap: () => _openWaterSheet(floor),
+                ),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: _buildFloorAction(
+                  c,
+                  icon: Icons.bolt_rounded,
+                  // 【v1.1.2】整层录电表：AI 拍表之外的手输冗余入口
+                  label: '整层录电表',
+                  ai: false,
+                  busy: false,
+                  colors: const <Color>[Color(0xFF7B5CFF), Color(0xFF9B6BFF)],
+                  onTap: () => _openElecSheet(floor),
                 ),
               ),
             ],
@@ -877,26 +945,47 @@ class _MeterPageState extends State<MeterPage> {
   }
 }
 
-//===================== 整层录水表：批量输入表单 ======================
+//===================== 整层录水表 / 电表：批量输入表单 ======================
 
 /// 每间房一行：房号 + 上期 + 输入框（预填当前值，留空不覆盖）。
-class _WaterFloorSheet extends StatefulWidget {
-  const _WaterFloorSheet({
+///
+/// 【v1.1.2】水表 / 电表共用这一张表单：电表侧只是换了个图标、单位和
+/// 「上期」取值，逻辑完全一致，不再重复一份代码。
+class _FloorSheet extends StatefulWidget {
+  const _FloorSheet({
     super.key,
     required this.rooms,
     required this.prefill,
     required this.onConfirm,
+    this.unit = '吨',
+    this.icon = Icons.water_drop_rounded,
+    this.accent = const Color(0xFF2A7BFF),
+    this.intro = '按水表表盘数字填写本层各房间本期读数，留空表示暂不录入：',
+    this.prevOf,
   });
 
   final List<Room> rooms;
   final Map<String, String> prefill;
   final void Function(Map<String, String>) onConfirm;
 
+  /// 输入框占位单位（水表「吨」/ 电表「度」）
+  final String unit;
+
+  /// 行首图标与主题色（水滴 / 闪电）
+  final IconData icon;
+  final Color accent;
+
+  /// 顶部说明文案
+  final String intro;
+
+  /// 「上期读数」取值；为空默认取水表上期（兼容旧调用）
+  final int Function(Room room)? prevOf;
+
   @override
-  State<_WaterFloorSheet> createState() => _WaterFloorSheetState();
+  State<_FloorSheet> createState() => _FloorSheetState();
 }
 
-class _WaterFloorSheetState extends State<_WaterFloorSheet> {
+class _FloorSheetState extends State<_FloorSheet> {
   late final Map<String, TextEditingController> _ctrls;
 
   @override
@@ -916,9 +1005,12 @@ class _WaterFloorSheetState extends State<_WaterFloorSheet> {
     super.dispose();
   }
 
+  int _prev(Room r) => widget.prevOf?.call(r) ?? r.waterPrev;
+
   @override
   Widget build(BuildContext context) {
     final MiuixColors c = MiuixTheme.of(context).colors;
+    final Color accent = widget.accent;
     return Padding(
       // 底部避让悬浮玻璃导航条，保证确认按钮不被遮挡
       padding: const EdgeInsets.only(bottom: kGlassNavClearance),
@@ -926,79 +1018,78 @@ class _WaterFloorSheetState extends State<_WaterFloorSheet> {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: <Widget>[
           MiuixText(
-            '按水表表盘数字填写本层各房间本期读数，留空表示暂不录入：',
-          fontSize: 12,
-          height: 1.5,
-          color: c.onSurfaceVariantSummary,
-        ),
-        const SizedBox(height: 6),
-        Expanded(
-          child: ListView(
-            children: <Widget>[
-              for (final Room r in widget.rooms)
-                Padding(
-                  padding: const EdgeInsets.symmetric(vertical: 5),
-                  child: Row(
-                    children: <Widget>[
-                      SizedBox(
-                        width: 52,
-                        child: MiuixText(r.roomNo,
-                            fontSize: 14, fontWeight: FontWeight.w600),
-                      ),
-                      const Icon(Icons.water_drop_rounded,
-                          size: 15, color: Color(0xFF2A7BFF)),
-                      const SizedBox(width: 6),
-                      StatusTag('上期 ${r.waterPrev}',
-                          color: c.onSurfaceVariantSummary),
-                      const Spacer(),
-                      Container(
-                        width: 96,
-                        height: 40,
-                        alignment: Alignment.center,
-                        decoration: BoxDecoration(
-                          color: const Color(0xFF2A7BFF).withValues(alpha: 0.05),
-                          borderRadius: BorderRadius.circular(12),
-                          border: Border.all(
-                              color: const Color(0xFF2A7BFF)
-                                  .withValues(alpha: 0.16)),
-                        ),
-                        child: TextField(
-                          controller: _ctrls[r.roomNo],
-                          keyboardType: TextInputType.number,
-                          textAlign: TextAlign.center,
-                          style: TextStyle(
-                            fontSize: 15,
-                            fontWeight: FontWeight.w600,
-                            color: c.onSurface,
-                          ),
-                          decoration: const InputDecoration(
-                            border: InputBorder.none,
-                            isDense: true,
-                            contentPadding: EdgeInsets.symmetric(vertical: 10),
-                            hintText: '吨',
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-            ],
+            widget.intro,
+            fontSize: 12,
+            height: 1.5,
+            color: c.onSurfaceVariantSummary,
           ),
-        ),
-        const SizedBox(height: 8),
-        GradientButton(
-          label: '填入本层输入框',
-          icon: Icons.download_rounded,
-          onPressed: () {
-            final Map<String, String> out = <String, String>{};
-            for (final MapEntry<String, TextEditingController> e
-                in _ctrls.entries) {
-              final String v = e.value.text.trim();
-              if (v.isNotEmpty) out[e.key] = v;
-            }
-            widget.onConfirm(out);
-          },
-        ),
+          const SizedBox(height: 6),
+          Expanded(
+            child: ListView(
+              children: <Widget>[
+                for (final Room r in widget.rooms)
+                  Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 5),
+                    child: Row(
+                      children: <Widget>[
+                        SizedBox(
+                          width: 52,
+                          child: MiuixText(r.roomNo,
+                              fontSize: 14, fontWeight: FontWeight.w600),
+                        ),
+                        Icon(widget.icon, size: 15, color: accent),
+                        const SizedBox(width: 6),
+                        StatusTag('上期 ${_prev(r)}',
+                            color: c.onSurfaceVariantSummary),
+                        const Spacer(),
+                        Container(
+                          width: 96,
+                          height: 40,
+                          alignment: Alignment.center,
+                          decoration: BoxDecoration(
+                            color: accent.withValues(alpha: 0.05),
+                            borderRadius: BorderRadius.circular(12),
+                            border:
+                                Border.all(color: accent.withValues(alpha: 0.16)),
+                          ),
+                          child: TextField(
+                            controller: _ctrls[r.roomNo],
+                            keyboardType: TextInputType.number,
+                            textAlign: TextAlign.center,
+                            style: TextStyle(
+                              fontSize: 15,
+                              fontWeight: FontWeight.w600,
+                              color: c.onSurface,
+                            ),
+                            decoration: InputDecoration(
+                              border: InputBorder.none,
+                              isDense: true,
+                              contentPadding:
+                                  const EdgeInsets.symmetric(vertical: 10),
+                              hintText: widget.unit,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 8),
+          GradientButton(
+            label: '填入本层输入框',
+            icon: Icons.download_rounded,
+            onPressed: () {
+              final Map<String, String> out = <String, String>{};
+              for (final MapEntry<String, TextEditingController> e
+                  in _ctrls.entries) {
+                final String v = e.value.text.trim();
+                if (v.isNotEmpty) out[e.key] = v;
+              }
+              widget.onConfirm(out);
+            },
+          ),
         ],
       ),
     );

@@ -7,6 +7,7 @@ import '../../core/config/app_config.dart';
 import '../../core/constants/app_constants.dart';
 import '../../core/utils/calc_util.dart';
 import '../../core/utils/date_util.dart';
+import '../../core/utils/id_validator.dart';
 import '../../data/models/payment.dart';
 import '../../data/models/person.dart';
 import '../../data/models/room.dart';
@@ -629,16 +630,29 @@ class _RoomDetailPageState extends State<RoomDetailPage> {
             mainAxisSize: MainAxisSize.min,
             children: <Widget>[
               AppTextField(label: '姓名', controller: name),
+              // 【v1.1.2】电话 / 身份证加实时位数格子条：已填绿实线、未填灰短横，
+              // 输错方向（电话不以 1 开头等）转红，一眼看出还差几位
               AppTextField(
                 label: '电话',
                 controller: phone,
                 keyboardType: TextInputType.phone,
                 clearComposing: true,
+                belowBuilder: (String v) => DigitSlots(
+                  text: v,
+                  total: 11,
+                  ok: IdValidator.phoneProgress(v.trim()),
+                ),
               ),
               AppTextField(
                 label: '身份证（选填）',
                 controller: idCard,
                 clearComposing: true,
+                belowBuilder: (String v) => DigitSlots(
+                  text: v,
+                  total: 18,
+                  ok: IdValidator.idProgress(v.trim()),
+                  province: IdValidator.idProvince(v),
+                ),
               ),
               Padding(
                 padding: const EdgeInsets.only(top: 2),

@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:ui';
 
 import 'package:flutter/material.dart';
@@ -527,7 +528,12 @@ class _AuroraScaffoldState extends State<AuroraScaffold> {
   Widget build(BuildContext context) {
     final MiuixColors c = MiuixTheme.of(context).colors;
     final bool premium = AppConfig.instance.premiumMaterial;
-    return Stack(
+    // 【v1.1.2 优化】给整页立一个共享背景组：页面里几十张玻璃卡的
+    // BackdropFilter 会共用同一次背景快照，引擎把 N 次模糊融合成一次渲染
+    // （见 BackdropFilter.grouped 文档），滚动时明显更省 GPU；
+    // 对话框等没有组的地方自动退回普通模糊，视觉完全一致。
+    return BackdropGroup(
+      child: Stack(
       fit: StackFit.expand,
       children: <Widget>[
         // 最底层：与原 MiuixScaffold 默认背景一致的 surface 底色
@@ -571,6 +577,7 @@ class _AuroraScaffoldState extends State<AuroraScaffold> {
           ),
         ),
       ],
+      ),
     );
   }
 }
@@ -604,7 +611,9 @@ class GlassCard extends StatelessWidget {
 
     final Widget card = ClipRRect(
       borderRadius: r,
-      child: BackdropFilter(
+      child: BackdropFilter.grouped(
+        // .grouped：同页多张玻璃卡共享一次背景快照（引擎融合成一次模糊渲染）；
+        // 没有 BackdropGroup 的场合（对话框）自动退回普通模糊
         filter: ImageFilter.blur(sigmaX: blurSigma, sigmaY: blurSigma),
         child: Container(
           padding: padding,
@@ -1474,6 +1483,188 @@ class _DatePickDialogState extends State<_DatePickDialog> {
 /// 控制器重建，输入文字 / 聚焦都不会触发 build，导致灰色占位文字与已输入
 /// 内容重叠。这里在外层监听文字与焦点变化强制重建，并在聚焦时传入空
 /// label，让灰色提示在文本框被激活的瞬间立即消失。
+/// 【v1.1.2】实时位数格子条：每输一位下方就亮一格，已填格实线下划线、
+/// 未填格灰色短横（电话 11 格 / 身份证 18 格），身份证再补一行省份。
+///
+/// 比单行 label 提示直观：一眼能看出还差几位、前缀有没有输错。
+class DigitSlots extends StatelessWidget {
+  const DigitSlots({
+    super.key,
+    required this.text,
+    required this.total,
+    this.ok = true,
+    this.province,
+  });
+
+  /// 当前已输入内容（超出 [total] 的部分不显示）
+  final String text;
+
+  /// 规定位数
+  final int total;
+
+  /// 已填的位是否「方向正确」（电话是否 1 开头 / 身份证省份是否已知）；
+  /// false 时已填格转红，提示继续输下去也不会对
+  final bool ok;
+
+  /// 身份证省份简称（不足 2 位或非已知区划传 null）
+  final String? province;
+
+  @override
+  Widget build(BuildContext context) {
+    final MiuixColors c = MiuixTheme.of(context).colors;
+    final Color filled = ok ? const Color(0xFF34C759) : c.error;
+    final Color empty = c.onSurfaceVariantSummary.withValues(alpha: 0.55);
+    final String v = text.trim();
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      mainAxisSize: MainAxisSize.min,
+      children: <Widget>[
+        Row(
+          children: <Widget>[
+            for (int i = 0; i < total; i++)
+              Expanded(
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 3),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: <Widget>[
+                      SizedBox(
+                        height: 16,
+                        child: Center(
+                          child: MiuixText(
+                            i < v.length ? v[i] : '–',
+                            fontSize: 12,
+                            color: i < v.length ? filled : empty,
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 2),
+                      Container(
+                        height: 2,
+                        decoration: BoxDecoration(
+                          color: i < v.length ? filled : empty,
+                          borderRadius: BorderRadius.circular(1),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+          ],
+        ),
+        if (province != null)
+          Padding(
+            padding: const EdgeInsets.only(top: 4),
+            child: MiuixText(province!, fontSize: 11, color: filled),
+          ),
+      ],
+    );
+  }
+}
+
+/// 计数字段的步进区间（v1.1.2「配套与资产」增减按钮用）
+class StepperRange {
+  const StepperRange({this.min = 0, this.max = 99});
+
+  final int min;
+  final int max;
+}
+
+/// 【v1.1.2】「− / +」步进按钮（DomainUpDown 式）：点按 ±1、长按连发，
+/// 值直接写回 controller，全程不唤起输入法。
+class _StepperButtons extends StatefulWidget {
+  const _StepperButtons({
+    required this.controller,
+    this.range = const StepperRange(),
+  });
+
+  final TextEditingController controller;
+  final StepperRange range;
+
+  @override
+  State<_StepperButtons> createState() => _StepperButtonsState();
+}
+
+class _StepperButtonsState extends State<_StepperButtons> {
+  Timer? _repeat;
+
+  @override
+  void dispose() {
+    _repeat?.cancel();
+    super.dispose();
+  }
+
+  void _bump(int dir) {
+    final int cur = int.tryParse(widget.controller.text.trim()) ?? 0;
+    int next = cur + dir;
+    if (next < widget.range.min) next = widget.range.min;
+    // 历史数据万一超过上限，按原样增减、不强行压回（避免 150 按 + 变 99）
+    if (next > widget.range.max && cur <= widget.range.max) {
+      next = widget.range.max;
+    }
+    if (next == cur) return;
+    widget.controller.text = next.toString();
+  }
+
+  /// 长按起步：先走一发，再每 120ms 连发（到边界自动停在边界值）
+  void _startRepeat(int dir) {
+    _repeat?.cancel();
+    _bump(dir);
+    _repeat =
+        Timer.periodic(const Duration(milliseconds: 120), (Timer _) => _bump(dir));
+  }
+
+  void _stopRepeat() {
+    _repeat?.cancel();
+    _repeat = null;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final MiuixColors c = MiuixTheme.of(context).colors;
+    return Padding(
+      padding: const EdgeInsets.only(left: 4, right: 8),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: <Widget>[
+          _btn(c, Icons.remove_rounded, -1),
+          Container(
+            width: 1,
+            height: 20,
+            color: c.onSurfaceVariantSummary.withValues(alpha: 0.28),
+          ),
+          _btn(c, Icons.add_rounded, 1),
+        ],
+      ),
+    );
+  }
+
+  Widget _btn(MiuixColors c, IconData icon, int dir) {
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: () => _bump(dir),
+      onLongPressStart: (_) => _startRepeat(dir),
+      onLongPressEnd: (_) => _stopRepeat(),
+      onLongPressCancel: _stopRepeat,
+      child: SizedBox(
+        width: 34,
+        height: 34,
+        child: Center(
+          child: Container(
+            width: 23,
+            height: 23,
+            decoration: BoxDecoration(
+              color: c.primary.withValues(alpha: 0.14),
+              shape: BoxShape.circle,
+            ),
+            child: Icon(icon, size: 15, color: c.primary),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
 class AppTextField extends StatefulWidget {
   const AppTextField({
     super.key,
@@ -1486,6 +1677,8 @@ class AppTextField extends StatefulWidget {
     this.trailingIcon,
     this.autofocus = false,
     this.clearComposing = false,
+    this.readOnly = false,
+    this.belowBuilder,
   });
   final String label;
   final TextEditingController controller;
@@ -1508,12 +1701,21 @@ class AppTextField extends StatefulWidget {
   /// 姓名这类要走中文拼音合成的输入框**不要**开启。
   final bool clearComposing;
 
+  /// 【v1.1.2】只读：聚焦不唤起输入法（配合 [AppLabelField.stepper] 计数器）
+  final bool readOnly;
+
+  /// 【v1.1.2】框下方随输入实时刷新的插槽（位数格子条）。
+  /// 只重建这个小块，不用外层整页 setState。
+  final Widget Function(String text)? belowBuilder;
+
   @override
   State<AppTextField> createState() => _AppTextFieldState();
 }
 
 class _AppTextFieldState extends State<AppTextField> {
   final FocusNode _focusNode = FocusNode();
+
+  bool _focus = false;
 
   @override
   void initState() {
@@ -1538,38 +1740,61 @@ class _AppTextFieldState extends State<AppTextField> {
     super.dispose();
   }
 
-  /// 文字或焦点变化 → 强制外层重建，令 MiuixTextField 重新判定标签状态
+  /// 【v1.1.2 优化】**只在焦点变化时**重建本字段。
+  ///
+  /// 文本变化曾让每个输入框都 setState 一次（外加整页 setState），打字时
+  /// 一帧要重建几十个 widget；如今文字相关的展示全部下沉到
+  /// [belowBuilder] 的 ValueListenableBuilder 小块里，打字只刷那一小块。
   void _sync() {
-    if (mounted) setState(() {});
+    if (!mounted) return;
+    final bool f = _focusNode.hasFocus;
+    if (f == _focus) return;
+    setState(() => _focus = f);
   }
 
   @override
   Widget build(BuildContext context) {
     return Padding(
       padding: const EdgeInsets.only(bottom: 12),
-      child: MiuixTextField(
-        // 聚焦瞬间传空 label → 内部判定 hidden → 灰色提示立即消失
-        label: _focusNode.hasFocus ? '' : widget.label,
-        controller: widget.controller,
-        focusNode: _focusNode,
-        autofocus: widget.autofocus,
-        keyboardType: widget.keyboardType,
-        singleLine: true,
-        onChanged: (String v) {
-          // 见 clearComposing：纯 ASCII 字段退格后清掉 composing，防止输入法
-          // 按旧长度把删掉的字符写回来
-          if (widget.clearComposing) {
-            final TextEditingValue cur = widget.controller.value;
-            if (cur.composing.isValid) {
-              widget.controller.value =
-                  TextEditingValue(text: cur.text, selection: cur.selection);
-            }
-          }
-          widget.onChanged?.call(v);
-        },
-        leadingIcon: widget.leadingIcon,
-        trailingIcon: widget.trailingIcon,
-        useLabelAsPlaceholder: true,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
+        children: <Widget>[
+          MiuixTextField(
+            // 聚焦瞬间传空 label → 内部判定 hidden → 灰色提示立即消失
+            label: _focus ? '' : widget.label,
+            controller: widget.controller,
+            focusNode: _focusNode,
+            autofocus: widget.autofocus,
+            readOnly: widget.readOnly,
+            keyboardType: widget.keyboardType,
+            singleLine: true,
+            onChanged: (String v) {
+              // 见 clearComposing：纯 ASCII 字段退格后清掉 composing，防止输入法
+              // 按旧长度把删掉的字符写回来
+              if (widget.clearComposing) {
+                final TextEditingValue cur = widget.controller.value;
+                if (cur.composing.isValid) {
+                  widget.controller.value =
+                      TextEditingValue(text: cur.text, selection: cur.selection);
+                }
+              }
+              widget.onChanged?.call(v);
+            },
+            leadingIcon: widget.leadingIcon,
+            trailingIcon: widget.trailingIcon,
+            useLabelAsPlaceholder: true,
+          ),
+          if (widget.belowBuilder != null)
+            ValueListenableBuilder<TextEditingValue>(
+              valueListenable: widget.controller,
+              builder: (BuildContext _, TextEditingValue v, Widget? __) =>
+                  Padding(
+                padding: const EdgeInsets.only(top: 6),
+                child: widget.belowBuilder!(v.text),
+              ),
+            ),
+        ],
       ),
     );
   }
@@ -1593,6 +1818,9 @@ class AppLabelField extends StatefulWidget {
     this.caption,
     this.captionColor,
     this.autofocus = false,
+    this.readOnly = false,
+    this.stepper,
+    this.belowBuilder,
   });
 
   /// 左侧常驻标签（如「房间号」「押金」）
@@ -1620,6 +1848,17 @@ class AppLabelField extends StatefulWidget {
 
   final bool autofocus;
 
+  /// 【v1.1.2】只读：聚焦不唤起输入法
+  final bool readOnly;
+
+  /// 【v1.1.2】非空则渲染成「− 数值 +」计数器（DomainUpDown 式）：
+  /// 只读 + 右侧步进钮，点按 ±1、长按连发，全程不弹输入法。
+  final StepperRange? stepper;
+
+  /// 【v1.1.2】框下方随输入实时刷新的插槽（位数格子条 + 校验小字）。
+  /// 只重建这个小块，不再需要外层整页 setState —— 打字更轻。
+  final Widget Function(String text)? belowBuilder;
+
   @override
   State<AppLabelField> createState() => _AppLabelFieldState();
 }
@@ -1634,6 +1873,11 @@ class _AppLabelFieldState extends State<AppLabelField> {
     super.initState();
     widget.controller.addListener(_sync);
     _focusNode.addListener(_sync);
+    // 【v1.1.2】计数器字段禁止获取焦点：点按整框也不会出现光标 / 收起
+    // 占位提示，更不会唤起输入法（真正改数靠右侧步进钮）
+    if (widget.stepper != null) {
+      _focusNode.canRequestFocus = false;
+    }
   }
 
   @override
@@ -1652,10 +1896,16 @@ class _AppLabelFieldState extends State<AppLabelField> {
     super.dispose();
   }
 
-  /// 文字或焦点变化 → 重建（标签高亮 / 占位提示同步）
+  /// 【v1.1.2 优化】只在焦点变化时重建（标签高亮）。
+  ///
+  /// 文本变化曾触发整块字段重建；如今文字驱动的内容已下沉到
+  /// [AppLabelField.belowBuilder] 的 ValueListenableBuilder 小块，
+  /// 打字只刷新那一小行，不再牵动输入框本体。
   void _sync() {
     if (!mounted) return;
-    setState(() => _focus = _focusNode.hasFocus);
+    final bool f = _focusNode.hasFocus;
+    if (f == _focus) return;
+    setState(() => _focus = f);
   }
 
   @override
@@ -1689,25 +1939,55 @@ class _AppLabelFieldState extends State<AppLabelField> {
                   controller: widget.controller,
                   focusNode: _focusNode,
                   autofocus: widget.autofocus,
+                  // 计数器恒定只读：点按步进钮调数，绝不唤起输入法
+                  readOnly: widget.readOnly || widget.stepper != null,
                   keyboardType: widget.keyboardType,
                   singleLine: true,
                   onChanged: widget.onChanged,
                   useLabelAsPlaceholder: true,
-                  trailingIcon: widget.trailingIcon,
+                  trailingIcon: widget.stepper != null
+                      ? _StepperButtons(
+                          controller: widget.controller,
+                          range: widget.stepper!,
+                        )
+                      : widget.trailingIcon,
                 ),
               ),
             ],
           ),
-          if (widget.caption != null)
-            Padding(
-              // 与输入框左缘对齐（标签宽 + 间距）
-              padding: EdgeInsets.only(left: widget.labelWidth + 10, top: 5),
-              child: MiuixText(
-                widget.caption!,
-                fontSize: 11,
-                color: widget.captionColor ?? c.onSurfaceVariantSummary,
-              ),
-            ),
+          // 框下方说明区：静态 caption 与动态插槽（位数格子条）一并收进
+          // ValueListenableBuilder —— 只随本字段的输入刷新这一小块
+          ValueListenableBuilder<TextEditingValue>(
+            valueListenable: widget.controller,
+            builder: (BuildContext _, TextEditingValue v, Widget? __) {
+              final Widget? below = widget.belowBuilder?.call(v.text);
+              final String? cap = widget.caption;
+              if (below == null && cap == null) {
+                return const SizedBox.shrink();
+              }
+              return Padding(
+                // 与输入框左缘对齐（标签宽 + 间距）
+                padding: EdgeInsets.only(left: widget.labelWidth + 10, top: 5),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
+                  children: <Widget>[
+                    if (below != null) below,
+                    if (cap != null)
+                      Padding(
+                        padding: const EdgeInsets.only(top: 4),
+                        child: MiuixText(
+                          cap,
+                          fontSize: 11,
+                          color: widget.captionColor ??
+                              c.onSurfaceVariantSummary,
+                        ),
+                      ),
+                  ],
+                ),
+              );
+            },
+          ),
         ],
       ),
     );
