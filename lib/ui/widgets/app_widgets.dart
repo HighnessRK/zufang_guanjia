@@ -1717,9 +1717,15 @@ class _AppTextFieldState extends State<AppTextField> {
 
   bool _focus = false;
 
+  /// 上次重建时文本是否为空。
+  /// 【v1.1.3】与 [_focus] 一起决定 MiuixTextField 内部占位提示的显隐，
+  /// 见 [_sync] 注释。
+  bool _empty = true;
+
   @override
   void initState() {
     super.initState();
+    _empty = widget.controller.text.isEmpty;
     widget.controller.addListener(_sync);
     _focusNode.addListener(_sync);
   }
@@ -1740,16 +1746,27 @@ class _AppTextFieldState extends State<AppTextField> {
     super.dispose();
   }
 
-  /// 【v1.1.2 优化】**只在焦点变化时**重建本字段。
+  /// 【v1.1.2 优化】只在**焦点变化**或**空 ↔ 非空翻转**时重建本字段。
   ///
   /// 文本变化曾让每个输入框都 setState 一次（外加整页 setState），打字时
   /// 一帧要重建几十个 widget；如今文字相关的展示全部下沉到
   /// [belowBuilder] 的 ValueListenableBuilder 小块里，打字只刷那一小块。
+  ///
+  /// 【v1.1.3 修复】上一版漏了「空↔非空」这一次必须重建的时机：MiuixTextField
+  /// 的占位提示由内部 `_labelState` 在**它自己 build 时**判定，而它只监听
+  /// 焦点/标签动画，文本翻转时既无动画也无人重建 → 旧的灰提示原地滞留，
+  /// 压在刚输入的数字上（计数器点「+」后「0」与「0 = 无」重叠即此）。
+  /// 现在只在空↔非空那一刻多一次本字段的 setState（每次编辑至多一帧），
+  /// 其余键入仍走局部刷新。
   void _sync() {
     if (!mounted) return;
     final bool f = _focusNode.hasFocus;
-    if (f == _focus) return;
-    setState(() => _focus = f);
+    final bool e = widget.controller.text.isEmpty;
+    if (f == _focus && e == _empty) return;
+    setState(() {
+      _focus = f;
+      _empty = e;
+    });
   }
 
   @override
@@ -1868,9 +1885,13 @@ class _AppLabelFieldState extends State<AppLabelField> {
 
   bool _focus = false;
 
+  /// 上次重建时文本是否为空。【v1.1.3】见 [_sync] 注释（占位提示重叠修复）。
+  bool _empty = true;
+
   @override
   void initState() {
     super.initState();
+    _empty = widget.controller.text.isEmpty;
     widget.controller.addListener(_sync);
     _focusNode.addListener(_sync);
     // 【v1.1.2】计数器字段禁止获取焦点：点按整框也不会出现光标 / 收起
@@ -1901,11 +1922,21 @@ class _AppLabelFieldState extends State<AppLabelField> {
   /// 文本变化曾触发整块字段重建；如今文字驱动的内容已下沉到
   /// [AppLabelField.belowBuilder] 的 ValueListenableBuilder 小块，
   /// 打字只刷新那一小行，不再牵动输入框本体。
+  ///
+  /// 【v1.1.3 修复】补上「空↔非空翻转」这一次必须重建的时机：MiuixTextField
+  /// 的灰占位提示由内部 `_labelState` 在它自己 build 时判定，而它只监听
+  /// 焦点/标签动画，文本翻转时无动画也无人重建 → 旧提示滞留压在新数值上
+  /// （配套与资产点「+」后「0」与灰提示重叠即此）。空↔非空每次编辑至多触发
+  /// 一帧重建，其余键入仍只刷下方小块。
   void _sync() {
     if (!mounted) return;
     final bool f = _focusNode.hasFocus;
-    if (f == _focus) return;
-    setState(() => _focus = f);
+    final bool e = widget.controller.text.isEmpty;
+    if (f == _focus && e == _empty) return;
+    setState(() {
+      _focus = f;
+      _empty = e;
+    });
   }
 
   @override

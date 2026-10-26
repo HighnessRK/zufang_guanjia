@@ -5,8 +5,8 @@ class AppConstants {
 
   //========================= 应用信息 =========================
   static const String appName = '租房管家';
-  static const String appVersion = '1.1.2';
-  static const String appBuild = '10';
+  static const String appVersion = '1.1.3';
+  static const String appBuild = '11';
 
   /// ====== 应用内更新：Release 仓库（GitHub / Gitee 同名公开仓库）======
   static const String updateRepoName = 'zufang_guanjia';
@@ -18,7 +18,8 @@ class AppConstants {
   /// SQLite 数据库文件名
   static const String dbName = 'rental.db';
   /// 数据库版本：v2 = people 主租户标记；v3 = people 身份证跟随租户（2026-10）
-  static const int dbVersion = 4;
+  /// v5 = receipts 电子收据表（v1.1.3）
+  static const int dbVersion = 5;
 
   /// 房间信息表
   static const String tableRooms = 'rooms';
@@ -28,6 +29,9 @@ class AppConstants {
 
   /// 缴费流水表（用于「缴费统计 / 历史账单 / 欠费累计」）
   static const String tablePayments = 'payments';
+
+  /// 电子收据表（v1.1.3）：按 房间号 + 账期 存一份水电收据快照
+  static const String tableReceipts = 'receipts';
 
   //========================= 配置文件 =========================
   /// 本地配置文件名（纯文本）

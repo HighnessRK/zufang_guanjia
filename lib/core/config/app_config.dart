@@ -57,6 +57,13 @@ class AppConfig extends ChangeNotifier {
   /// （智能模式夏季月付、其余季付）。
   String elecCollectDate = '';
 
+  /// 【v1.1.3】收电日期独立于收水日期。
+  ///
+  /// 默认 false = 跟随收水日期（改水日即同步电日，收电日期行只读展示）；
+  /// 需要两日不一致时打开本开关，收电日期行恢复可点、单独选择。
+  /// 老用户升级首次读到键缺失时，按既有两日是否相同推断，保持原行为不变。
+  bool elecDateIndependent = false;
+
   /// 【v1.1.1】入住日期一改，到期日期自动顺延一年。
   /// 默认开启；关掉则到期日期完全手动维护。
   bool autoExpire = true;
@@ -236,6 +243,18 @@ class AppConfig extends ChangeNotifier {
     elecCollectDate =
         DateUtil.format(elecDay ?? DateTime(today.year, today.month, 1));
     _collectDateDirty = waterDay == null || elecDay == null;
+    // 【v1.1.3】收电日期默认跟随收水日期。
+    // 键缺失 = 首次升到 1.1.3：按既有两日是否相同推断（不同则保留独立，
+    // 不悄悄改老用户的收电日）；键存在 = 以开关为准，关闭时强制同步。
+    if (!map.containsKey('elec_date_independent')) {
+      elecDateIndependent = waterCollectDate != elecCollectDate;
+    } else {
+      elecDateIndependent = map['elec_date_independent'] == '1';
+    }
+    if (!elecDateIndependent && elecCollectDate != waterCollectDate) {
+      elecCollectDate = waterCollectDate;
+      _collectDateDirty = true;
+    }
     remindDays = _toInt(map['remind_days'], 7);
     expireRemindDays = _toInt(map['expire_remind_days'], 30);
     notifyEnabled = map['notify_enabled'] != '0';
@@ -306,6 +325,8 @@ class AppConfig extends ChangeNotifier {
       ..writeln('# 按上面的周期间隔逐期推进，到期所有房间同期一起应收')
       ..writeln('water_collect_date=$waterCollectDate')
       ..writeln('elec_collect_date=$elecCollectDate')
+      ..writeln('# 收电日期独立于收水 1=独立 0=跟随收水（v1.1.3 默认跟随）')
+      ..writeln('elec_date_independent=${elecDateIndependent ? 1 : 0}')
       ..writeln()
       ..writeln('#—— 通知提醒 ———')
       ..writeln('remind_days=$remindDays')
@@ -354,6 +375,7 @@ class AppConfig extends ChangeNotifier {
     int? summerEnd,
     String? waterCollectDate,
     String? elecCollectDate,
+    bool? elecDateIndependent,
     int? remindDays,
     int? expireRemindDays,
     bool? notifyEnabled,
@@ -381,6 +403,12 @@ class AppConfig extends ChangeNotifier {
     this.summerEnd = summerEnd ?? this.summerEnd;
     this.waterCollectDate = waterCollectDate ?? this.waterCollectDate;
     this.elecCollectDate = elecCollectDate ?? this.elecCollectDate;
+    this.elecDateIndependent =
+        elecDateIndependent ?? this.elecDateIndependent;
+    // 【v1.1.3】跟随模式下电日始终等于水日：任一处改动后兜底同步
+    if (!this.elecDateIndependent) {
+      this.elecCollectDate = this.waterCollectDate;
+    }
     this.remindDays = remindDays ?? this.remindDays;
     this.expireRemindDays = expireRemindDays ?? this.expireRemindDays;
     this.notifyEnabled = notifyEnabled ?? this.notifyEnabled;

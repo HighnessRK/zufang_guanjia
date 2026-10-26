@@ -191,4 +191,30 @@ class NativeBridge {
         await _channel.invokeMethod<bool>('requestStorageAccess');
     return ok ?? false;
   }
+
+  //========================= 电子收据（v1.1.3）==========================
+
+  /// 系统分享一张图片（收据转发微信 / QQ / 文件等，走 ACTION_SEND 面板）。
+  /// [path] 须位于 FileProvider 可见目录（缓存目录已配好）。
+  ///
+  /// [toWeChat] 为 true 时先直启微信分享页（ShareImgUI），
+  /// 未安装微信自动回落系统分享面板。
+  static Future<bool> shareImage(String path, {bool toWeChat = false}) async {
+    final bool? ok =
+        await _channel.invokeMethod<bool>('shareImage', <String, Object?>{
+      'path': path,
+      'wechat': toWeChat,
+    });
+    return ok ?? false;
+  }
+
+  /// 保存 PNG 到系统相册（MediaStore · Pictures/租房管家）。
+  /// Android 10+ 无需任何存储运行时权限。
+  static Future<bool> saveImageToGallery(String path) async {
+    final bool? ok = await _channel.invokeMethod<bool>(
+        'saveImageToGallery', <String, Object?>{
+      'path': path,
+    });
+    return ok ?? false;
+  }
 }

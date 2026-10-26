@@ -604,6 +604,35 @@ class PaymentRepository {
     }
     return result;
   }
+
+  /// 【v1.1.3 · 租金报表】按账期区间 + 费用类型聚合。
+  ///
+  /// [from]/[to] 为 `yyyy-MM` 账期（字典序即时间序），含首尾；一条
+  /// `GROUP BY pay_type` 聚合 SQL，比逐期 [statSummary] 循环快得多。
+  Future<List<FeeTypeSum>> sumByTypeRange(String from, String to) async {
+    final String a = from.compareTo(to) <= 0 ? from : to;
+    final String b = from.compareTo(to) <= 0 ? to : from;
+    final db = await DatabaseHelper.instance.database;
+    final List<Map<String, Object?>> rows = await db.rawQuery(
+      'SELECT pay_type, SUM(due) AS due, SUM(paid) AS paid, '
+      'COUNT(*) AS n, COUNT(DISTINCT room_no) AS rooms '
+      'FROM ${AppConstants.tablePayments} '
+      'WHERE period >= ? AND period <= ? '
+      'GROUP BY pay_type ORDER BY pay_type',
+      <Object?>[a, b],
+    );
+    return rows.map((Map<String, Object?> r) {
+      final Object? due = r['due'], paid = r['paid'];
+      final Object? n = r['n'], rooms = r['rooms'];
+      return FeeTypeSum(
+        payType: r['pay_type'] as String,
+        due: due is int ? due : 0,
+        paid: paid is int ? paid : 0,
+        count: n is int ? n : 0,
+        rooms: rooms is int ? rooms : 0,
+      );
+    }).toList();
+  }
 }
 
 /// 汇总统计结果
@@ -640,4 +669,42 @@ class StatSummary {
     final int total = settledCount + unsettledCount;
     return total == 0 ? 0 : settledCount / total;
   }
+}
+
+/// 【v1.1.3 · 租金报表】单个费用类型的账期区间汇总。
+class FeeTypeSum {
+  const FeeTypeSum({
+    required this.payType,
+    required this.due,
+    required this.paid,
+    required this.count,
+    required this.rooms,
+  });
+
+  /// 费用类型：rent / water / elec / utility（旧版水电合并口径）
+  final String payType;
+
+  /// 应收合计（元）
+  final int due;
+
+  /// 实收合计（元）
+  final int paid;
+
+  /// 流水笔数
+  final int count;
+
+  /// 覆盖房间数
+  final int rooms;
+
+  /// 欠费合计（元）
+  int get debt => due - paid > 0 ? due - paid : 0;
+
+  /// 中文标签
+  String get label => switch (payType) {
+        'rent' => '房租',
+        'water' => '水费',
+        'elec' => '电费',
+        'utility' => '水电费',
+        _ => payType,
+      };
 }

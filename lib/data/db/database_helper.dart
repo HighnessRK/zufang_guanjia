@@ -5,7 +5,7 @@ import '../../core/constants/app_constants.dart';
 
 /// SQLite 数据库帮助类：负责建库、建表、升级、备份路径管理。
 ///
-/// 【三张表】
+/// 【四张表】rooms / people / payments / receipts（v1.1.3 起）
 ///   rooms     房间信息表（核心）
 ///   people    租户信息表（核心）
 ///   payments  缴费流水表（支撑缴费统计 / 历史账单 / 欠费累计）
@@ -107,6 +107,9 @@ class DatabaseHelper {
       )
     ''');
 
+    // 4) 电子收据表（v1.1.3）：房间号 + 账期 唯一，房间删除级联清理
+    await _createReceipts(db);
+
     // 常用查询索引
     await db.execute(
         'CREATE INDEX idx_payments_period ON ${AppConstants.tablePayments} (period)');
@@ -114,6 +117,33 @@ class DatabaseHelper {
         'CREATE INDEX idx_payments_room ON ${AppConstants.tablePayments} (room_no)');
     await db.execute(
         'CREATE INDEX idx_people_room ON ${AppConstants.tablePeople} (room_no)');
+  }
+
+  /// 电子收据表 + 索引（新装 [_onCreate] 与老用户升级 [_onUpgrade] 共用）
+  Future<void> _createReceipts(Database db) async {
+    await db.execute('''
+      CREATE TABLE ${AppConstants.tableReceipts} (
+        id         INTEGER PRIMARY KEY AUTOINCREMENT,
+        room_no    TEXT    NOT NULL,
+        period     TEXT    NOT NULL,              -- 账期 yyyy-MM
+        no         TEXT    NOT NULL DEFAULT '',   -- 收据编号
+        tenant     TEXT    NOT NULL DEFAULT '',   -- 租户快照
+        water_fee  INTEGER NOT NULL DEFAULT 0,    -- 水费（元）
+        elec_fee   INTEGER NOT NULL DEFAULT 0,    -- 电费（元）
+        total      INTEGER NOT NULL DEFAULT 0,    -- 合计（元）
+        water_use  INTEGER,                       -- 用量快照（吨，可空）
+        elec_use   INTEGER,                       -- 用量快照（度，可空）
+        water_price REAL,                         -- 水价快照（元/吨）
+        elec_price REAL,                          -- 电价快照（元/度）
+        note       TEXT    NOT NULL DEFAULT '',
+        created_at TEXT    NOT NULL,              -- 生成时间 yyyy-MM-dd HH:mm
+        UNIQUE (room_no, period),
+        FOREIGN KEY (room_no) REFERENCES ${AppConstants.tableRooms} (room_no)
+          ON DELETE CASCADE
+      )
+    ''');
+    await db.execute(
+        'CREATE INDEX IF NOT EXISTS idx_receipts_created ON ${AppConstants.tableReceipts} (created_at)');
   }
 
   /// 版本升级
@@ -196,6 +226,11 @@ class DatabaseHelper {
       await db.execute(
           'ALTER TABLE ${AppConstants.tableRooms} '
           "ADD COLUMN floor TEXT NOT NULL DEFAULT ''");
+    }
+
+    // v4 → v5：新增电子收据表（v1.1.3）
+    if (oldVersion < 5) {
+      await _createReceipts(db);
     }
   }
 

@@ -165,8 +165,30 @@ class _BillingSettingsPageState extends State<BillingSettingsPage> {
                   const MiuixHorizontalDivider(),
                   MiuixArrowPreference(
                     title: '收电日期',
-                    summary: cfg.elecCollectDate,
-                    onClick: () => _pickCollectDate('elec'),
+                    // 【v1.1.3】默认跟随收水日期：只读展示跟随结果；打开
+                    // 下方独立开关后恢复单独选择
+                    summary: cfg.elecDateIndependent
+                        ? cfg.elecCollectDate
+                        : '跟随收水日期（${cfg.waterCollectDate}）',
+                    onClick: cfg.elecDateIndependent
+                        ? () => _pickCollectDate('elec')
+                        : () => AppSnackbar.show(
+                            '已跟随收水日期；打开下方「收电日期独立设置」可单独选'),
+                  ),
+                  const MiuixHorizontalDivider(),
+                  MiuixBasicComponent(
+                    title: '收电日期独立设置',
+                    summary: cfg.elecDateIndependent
+                        ? '已开启：收电日期单独选择，不随收水日期变化'
+                        : '默认跟随：收电日期与收水日期保持一致',
+                    onClick: () =>
+                        _toggleElecIndependent(!cfg.elecDateIndependent),
+                    endActions: <Widget>[
+                      MiuixSwitch(
+                        value: cfg.elecDateIndependent,
+                        onChanged: _toggleElecIndependent,
+                      ),
+                    ],
                   ),
                 ],
               ),
@@ -270,6 +292,16 @@ class _BillingSettingsPageState extends State<BillingSettingsPage> {
     final List<Room> rooms = await RoomRepository.instance.all();
     await PaymentRepository.instance.ensureCurrentPeriod(rooms);
     if (mounted) setState(() {});
+  }
+
+  /// 【v1.1.3】切换「收电日期独立设置」。关闭 = 电日回到水日，
+  /// 立即按新日历重算全楼层应收（幂等，不影响已结清流水）。
+  Future<void> _toggleElecIndependent(bool v) async {
+    final AppConfig cfg = AppConfig.instance;
+    await cfg.update(elecDateIndependent: v);
+    final List<Room> rooms = await RoomRepository.instance.all();
+    await PaymentRepository.instance.ensureCurrentPeriod(rooms);
+    _refresh();
   }
 
   void _refresh() {

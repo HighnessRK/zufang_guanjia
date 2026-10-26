@@ -15,8 +15,8 @@ import '../shell/app_shell.dart';
 import '../widgets/app_widgets.dart';
 
 /// 水电抄录页（核心高频功能）——按楼层组织：
-///   每层卡片：【整层拍电表 · AI 统一识别多块表】/【整层录水表 · 批量输入】
-///             /【整层录电表 · 批量输入（v1.1.2 冗余入口）】
+///   每层卡片：【AI拍电表 · 统一识别多块表】/【录电表 · 批量输入】/【录水表 · 批量输入】
+///             （v1.1.3：按电→电→水排序 + 短标签防截断）
 ///   每间房行：单房间拍照 / 水表输入 / 已收徽章 / 实时费用
 ///   底部一键保存全部修改。
 ///
@@ -612,14 +612,17 @@ class _MeterPageState extends State<MeterPage> {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: <Widget>[
           // 楼层批量操作行
+          // 【v1.1.3】按「测量对象」分组排序：电的两种录入方式相邻、水排最后
+          // （v1.1.2 是 拍电|录水|录电 = 电|水|电，来回跳不符合操作逻辑）。
+          // 标签去掉楼层卡里本就冗余的「整层」前缀、AI 挪进文字、图标直接画
+          // 电表/水表水滴，三个按钮的文字在 400dp 逻辑屏上完整显示不再截断。
           Row(
             children: <Widget>[
               Expanded(
                 child: _buildFloorAction(
                   c,
                   icon: Icons.photo_camera_rounded,
-                  label: '整层拍电表',
-                  ai: true,
+                  label: 'AI拍电表',
                   busy: _recognizing && _busyFloor == floor,
                   colors: const <Color>[Color(0xFF3482FF), Color(0xFF7B5CFF)],
                   onTap: () => _captureFloorElec(floor),
@@ -629,25 +632,23 @@ class _MeterPageState extends State<MeterPage> {
               Expanded(
                 child: _buildFloorAction(
                   c,
-                  icon: Icons.edit_rounded,
-                  label: '整层录水表',
-                  ai: false,
+                  icon: Icons.bolt_rounded,
+                  // 【v1.1.2】整层录电表：AI 拍表之外的手输冗余入口
+                  label: '录电表',
                   busy: false,
-                  colors: const <Color>[Color(0xFF3FC1FF), Color(0xFF2A7BFF)],
-                  onTap: () => _openWaterSheet(floor),
+                  colors: const <Color>[Color(0xFF7B5CFF), Color(0xFF9B6BFF)],
+                  onTap: () => _openElecSheet(floor),
                 ),
               ),
               const SizedBox(width: 10),
               Expanded(
                 child: _buildFloorAction(
                   c,
-                  icon: Icons.bolt_rounded,
-                  // 【v1.1.2】整层录电表：AI 拍表之外的手输冗余入口
-                  label: '整层录电表',
-                  ai: false,
+                  icon: Icons.water_drop_rounded,
+                  label: '录水表',
                   busy: false,
-                  colors: const <Color>[Color(0xFF7B5CFF), Color(0xFF9B6BFF)],
-                  onTap: () => _openElecSheet(floor),
+                  colors: const <Color>[Color(0xFF3FC1FF), Color(0xFF2A7BFF)],
+                  onTap: () => _openWaterSheet(floor),
                 ),
               ),
             ],
@@ -663,12 +664,16 @@ class _MeterPageState extends State<MeterPage> {
     );
   }
 
-  /// 楼层批量操作按钮：渐变描边胶囊，AI 带角标，识别中转圈
+  /// 楼层批量操作按钮：渐变描边胶囊，识别中转圈。
+  ///
+  /// 【v1.1.3】三按钮等分后单个仅约 96dp（内容 80dp），v1.1.2 的
+  /// 「整层拍电表」+ AI 徽标要 111dp → 文字被压成「整…」。改为短标签 +
+  /// `FittedBox(scaleDown)`：空间不够时**整段按比例缩小**而非截断省略，
+  /// 任何屏幕宽度都保证看到完整文字；AI 以文字呈现、撤掉独立徽标腾宽。
   Widget _buildFloorAction(
     MiuixColors c, {
     required IconData icon,
     required String label,
-    required bool ai,
     required bool busy,
     required List<Color> colors,
     required VoidCallback onTap,
@@ -680,9 +685,6 @@ class _MeterPageState extends State<MeterPage> {
         opacity: busy ? 0.75 : 1,
         child: Container(
           height: 42,
-          // 【v1.1.1 修复】padding 12→8、图标与文字间距 8→6，并把文字包进
-          // Flexible + ellipsis：楼层整排按钮里「整层拍电表」这类长标签此前
-          // 直接把胶囊撑破，右侧漏出黄黑溢出条（RIGHT OVERFLOWED BY 7）。
           padding: const EdgeInsets.symmetric(horizontal: 8),
           decoration: BoxDecoration(
             gradient: LinearGradient(
@@ -701,8 +703,8 @@ class _MeterPageState extends State<MeterPage> {
             children: <Widget>[
               busy
                   ? SizedBox(
-                      width: 18,
-                      height: 18,
+                      width: 17,
+                      height: 17,
                       child: CircularProgressIndicator(
                         strokeWidth: 2,
                         color: main,
@@ -711,34 +713,17 @@ class _MeterPageState extends State<MeterPage> {
                   : Icon(icon, size: 17, color: main),
               const SizedBox(width: 6),
               Flexible(
-                child: MiuixText(
-                  busy ? '识别中…' : label,
-                  fontSize: 13,
-                  fontWeight: FontWeight.w600,
-                  color: main,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
+                child: FittedBox(
+                  fit: BoxFit.scaleDown,
+                  child: MiuixText(
+                    busy ? '识别中…' : label,
+                    fontSize: 13,
+                    fontWeight: FontWeight.w600,
+                    color: main,
+                    maxLines: 1,
+                  ),
                 ),
               ),
-              if (ai) ...<Widget>[
-                const SizedBox(width: 6),
-                Container(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 6, vertical: 1.5),
-                  decoration: BoxDecoration(
-                    gradient: const LinearGradient(
-                      colors: <Color>[Color(0xFF3482FF), Color(0xFF7B5CFF)],
-                    ),
-                    borderRadius: BorderRadius.circular(6),
-                  ),
-                  child: const MiuixText(
-                    'AI',
-                    fontSize: 9,
-                    fontWeight: FontWeight.w700,
-                    color: Colors.white,
-                  ),
-                ),
-              ],
             ],
           ),
         ),

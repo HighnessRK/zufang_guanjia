@@ -8,7 +8,10 @@ import '../../data/models/room.dart';
 import '../../data/repository/payment_repository.dart';
 import '../../data/repository/room_repository.dart';
 import '../../services/data_bus.dart';
+import '../receipt/receipt_list_page.dart';
 import '../shell/app_shell.dart';
+import '../stat/fee_report_page.dart';
+import '../transitions.dart';
 import '../widgets/app_widgets.dart';
 
 /// 底部导航「收款」Tab 根页面：把散落在各房间详情/编辑页里的收款动作
@@ -177,6 +180,36 @@ class _CollectPanelPageState extends State<CollectPanelPage> {
               ),
               children: <Widget>[
                 _buildSummaryCard(rentTotal, utilTotal, c),
+                const SizedBox(height: 16),
+                // 【v1.1.3】更多工具：电子收据 / 租金报表
+                const SectionTitle('更多工具'),
+                GlassCard(
+                  padding: const EdgeInsets.symmetric(vertical: 4),
+                  borderRadius: 20,
+                  child: Column(
+                    children: <Widget>[
+                      MiuixArrowPreference(
+                        title: '电子收据',
+                        summary: '生成水、电收据图片 · 保存相册 · 转发微信',
+                        onClick: () => Navigator.of(context).push(
+                          AppPageRoute<void>(
+                              builder: (BuildContext _) =>
+                                  const ReceiptListPage()),
+                        ),
+                      ),
+                      const MiuixHorizontalDivider(),
+                      MiuixArrowPreference(
+                        title: '租金报表',
+                        summary: '按起止日期汇总房租 / 水费 / 电费',
+                        onClick: () => Navigator.of(context).push(
+                          AppPageRoute<void>(
+                              builder: (BuildContext _) =>
+                                  const FeeReportPage()),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
                 const SizedBox(height: 16),
                 const SectionTitle('待收明细'),
                 if (items.isEmpty)

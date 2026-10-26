@@ -2,12 +2,14 @@ package com.zufang.guanjia
 
 import android.Manifest
 import android.app.Activity
+import android.content.ContentValues
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import android.os.Environment
+import android.provider.MediaStore
 import android.provider.Settings
 import android.util.Log
 import androidx.core.app.ActivityCompat
@@ -41,6 +43,8 @@ import java.util.zip.ZipOutputStream
  *   backup               备份数据库 + info.gwt 并分享
  *   pickBackupFile       弹出系统文件选择器选择备份包
  *   restore              用备份包覆盖数据库 + info.gwt
+ *   shareImage           系统分享一张图片（电子收据转发微信等）
+ *   saveImageToGallery   保存 PNG 到系统相册（Pictures/租房管家）
  */
 class MainActivity : FlutterActivity() {
 
@@ -297,6 +301,70 @@ class MainActivity : FlutterActivity() {
                     }
                 }
 
+                //==================== 电子收据：分享图片 ====================
+                // wechat=true 先直启微信分享页，未装微信回落系统分享面板
+                "shareImage" -> {
+                    try {
+                        val path = call.argument<String>("path") ?: ""
+                        val toWeChat = call.argument<Boolean>("wechat") ?: false
+                        val file = File(path)
+                        if (!file.exists()) {
+                            result.error("ENOENT", "图片文件不存在", path)
+                            return@setMethodCallHandler
+                        }
+                        val uri: Uri = FileProvider.getUriForFile(
+                            this, "$packageName.fileprovider", file
+                        )
+                        val send = Intent(Intent.ACTION_SEND).apply {
+                            type = "image/png"
+                            putExtra(Intent.EXTRA_STREAM, uri)
+                            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                        }
+                        var done = false
+                        if (toWeChat) {
+                            try {
+                                val wx = Intent(send).apply {
+                                    setClassName(
+                                        "com.tencent.mm",
+                                        "com.tencent.mm.ui.tools.ShareImgUI"
+                                    )
+                                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                                }
+                                startActivity(wx)
+                                done = true
+                            } catch (_: Throwable) {
+                                done = false
+                            }
+                        }
+                        if (!done) {
+                            startActivity(
+                                Intent.createChooser(send, "转发收据").apply {
+                                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                                }
+                            )
+                        }
+                        result.success(true)
+                    } catch (e: Exception) {
+                        result.error("SHARE", e.message, null)
+                    }
+                }
+
+                //==================== 电子收据：保存到相册 ====================
+                // MediaStore Pictures/租房管家；Android 10+ 无需任何存储权限
+                "saveImageToGallery" -> {
+                    Thread {
+                        try {
+                            val path = call.argument<String>("path") ?: ""
+                            saveImageToGallery(path)
+                            runOnUiThread { result.success(true) }
+                        } catch (e: Exception) {
+                            runOnUiThread {
+                                result.error("GALLERY", e.message, null)
+                            }
+                        }
+                    }.start()
+                }
+
                 else -> result.notImplemented()
             }
         }
@@ -355,6 +423,46 @@ class MainActivity : FlutterActivity() {
         }
 
         return outFile.name
+    }
+
+    /**
+     * 保存 PNG 到系统相册：MediaStore 写入 Pictures/租房管家。
+     * Android 10+ 走 RELATIVE_PATH + IS_PENDING，无需任何存储运行时权限。
+     */
+    private fun saveImageToGallery(path: String) {
+        val file = File(path)
+        if (!file.exists()) throw IllegalArgumentException("图片文件不存在: $path")
+
+        val values = ContentValues().apply {
+            put(
+                MediaStore.Images.Media.DISPLAY_NAME,
+                "收据_${SimpleDateFormat(
+                    "yyyyMMdd_HHmmss", Locale.getDefault()
+                ).format(Date())}.png"
+            )
+            put(MediaStore.Images.Media.MIME_TYPE, "image/png")
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                put(
+                    MediaStore.Images.Media.RELATIVE_PATH,
+                    Environment.DIRECTORY_PICTURES + "/租房管家"
+                )
+                put(MediaStore.Images.Media.IS_PENDING, 1)
+            }
+        }
+        val resolver = contentResolver
+        val uri = resolver.insert(
+            MediaStore.Images.Media.EXTERNAL_CONTENT_URI, values
+        ) ?: throw IllegalStateException("无法写入相册")
+
+        resolver.openOutputStream(uri)?.use { out ->
+            FileInputStream(file).use { input -> input.copyTo(out) }
+        } ?: throw IllegalStateException("无法打开输出流")
+
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            values.clear()
+            values.put(MediaStore.Images.Media.IS_PENDING, 0)
+            resolver.update(uri, values, null, null)
+        }
     }
 
     /**

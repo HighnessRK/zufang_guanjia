@@ -9,6 +9,7 @@ import '../../services/data_bus.dart';
 import '../../services/notification_service.dart';
 import '../../services/reminder_engine.dart';
 import '../notification/notification_center_page.dart';
+import '../receipt/receipt_list_page.dart';
 import '../rooms/room_edit_page.dart';
 import '../shell/app_shell.dart';
 import '../transitions.dart';
@@ -548,44 +549,61 @@ class _HomePageState extends State<HomePage> {
     );
   }
 
-  /// 快捷入口（玻璃渐变图标；5 项等宽平铺，间距收窄避免 4 字标签换行）
+  /// 快捷入口（玻璃渐变图标）。
+  /// 【v1.1.3】新增「电子收据」后共 6 项：一行 5 项在 400dp 逻辑屏上
+  /// 每格仅剩 ~66dp，4 字标签会挤压，改为两行 3+3 等宽平铺。
   Widget _buildQuickEntries(MiuixColors c) {
-    return Row(
+    return Column(
       children: <Widget>[
-        QuickEntry(
-          icon: Icons.add_home_rounded,
-          label: '新增房间',
-          color: c.primary,
-          onTap: _openAddRoom,
+        Row(
+          children: <Widget>[
+            QuickEntry(
+              icon: Icons.add_home_rounded,
+              label: '新增房间',
+              color: c.primary,
+              onTap: _openAddRoom,
+            ),
+            const SizedBox(width: 8),
+            QuickEntry(
+              icon: Icons.speed_rounded,
+              label: '水电抄表',
+              color: const Color(0xFF34C759),
+              onTap: _openMeter,
+            ),
+            const SizedBox(width: 8),
+            QuickEntry(
+              icon: Icons.receipt_long_rounded,
+              label: '房间管理',
+              color: const Color(0xFFAF52DE),
+              onTap: _openRooms,
+            ),
+          ],
         ),
-        const SizedBox(width: 8),
-        QuickEntry(
-          icon: Icons.speed_rounded,
-          label: '水电抄表',
-          color: const Color(0xFF34C759),
-          onTap: _openMeter,
-        ),
-        const SizedBox(width: 8),
-        QuickEntry(
-          icon: Icons.receipt_long_rounded,
-          label: '房间管理',
-          color: const Color(0xFFAF52DE),
-          onTap: _openRooms,
-        ),
-        const SizedBox(width: 8),
-        // 收款：与底部导航同序（抄表之后、设置之前）
-        QuickEntry(
-          icon: Icons.account_balance_wallet_rounded,
-          label: '收款',
-          color: const Color(0xFFFF9500),
-          onTap: _openCollectPanel,
-        ),
-        const SizedBox(width: 8),
-        QuickEntry(
-          icon: Icons.tune_rounded,
-          label: '设置',
-          color: const Color(0xFF8E8E93),
-          onTap: _openSettings,
+        const SizedBox(height: 8),
+        Row(
+          children: <Widget>[
+            // 收款：与底部导航同序（抄表之后、设置之前）
+            QuickEntry(
+              icon: Icons.account_balance_wallet_rounded,
+              label: '收款',
+              color: const Color(0xFFFF9500),
+              onTap: _openCollectPanel,
+            ),
+            const SizedBox(width: 8),
+            QuickEntry(
+              icon: Icons.request_quote_rounded,
+              label: '电子收据',
+              color: const Color(0xFF00BFB3),
+              onTap: _openReceipt,
+            ),
+            const SizedBox(width: 8),
+            QuickEntry(
+              icon: Icons.tune_rounded,
+              label: '设置',
+              color: const Color(0xFF8E8E93),
+              onTap: _openSettings,
+            ),
+          ],
         ),
       ],
     );
@@ -612,6 +630,16 @@ class _HomePageState extends State<HomePage> {
   void _openCollectPanel() => AppShellScope.of(context).switchTab(3);
 
   void _openSettings() => AppShellScope.of(context).switchTab(4);
+
+  /// 电子收据（v1.1.3）：生成 / 管理水、电收据图片
+  void _openReceipt() {
+    Navigator.of(context)
+        .push(
+          AppPageRoute<void>(
+              builder: (BuildContext _) => const ReceiptListPage()),
+        )
+        .then((_) => _load());
+  }
 
   void _openAddRoom() {
     Navigator.of(context)
