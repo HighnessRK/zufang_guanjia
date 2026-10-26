@@ -71,14 +71,23 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
     WidgetsBinding.instance.addObserver(this);
     // 键盘守卫：跟踪输入框焦点（用于 PopScope 拦截返回、只收键盘）
     FocusManager.instance.addListener(_onFocusChanged);
-    // 应用内更新：首帧后静默检查（开启自动检查时），新版本每版弹一次提醒
+    // 应用内更新：首帧后静默检查，每次启动发现新版本均提醒。
     WidgetsBinding.instance.addPostFrameCallback((_) => _autoCheckUpdate());
   }
 
-  /// 启动静默检查更新：发现新版本且开启提醒时弹一次（同一版本不重复）
+  /// 启动静默检查更新：发现新版本且开启提醒时**每次启动都弹**。
+  ///
+  /// v1.1.4 起改为「每版必弹」——不再按 `updatePromptedVersion` 去重。
+  /// 老逻辑「同一版本只弹一次」让用户关掉一次就永远看不到，反而漏掉了
+  /// 重要修复；这里保留配置项但不再做拦截，用户仍可用「更新提醒」开关
+  /// 整体关闭，或用「稍后再说」关闭本次。
+  bool _checkingUpdate = false;
+  bool _wasBackground = false;
+
   Future<void> _autoCheckUpdate() async {
     final AppConfig cfg = AppConfig.instance;
-    if (!cfg.autoCheckUpdate) return;
+    if (!cfg.autoCheckUpdate || _checkingUpdate) return;
+    _checkingUpdate = true;
     try {
       final UpdateInfo? info = await UpdateService.checkLatest();
       if (info == null || !mounted) return;
@@ -88,12 +97,17 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
         return;
       }
       if (!cfg.updateNotify) return;
-      if (cfg.updatePromptedVersion == info.version) return;
-      await cfg.update(updatePromptedVersion: info.version);
+      // 记录已提醒版本（用于「更新设置」页展示最近提醒到的版本），
+      // 但不再用它拦截弹窗。
+      if (cfg.updatePromptedVersion != info.version) {
+        await cfg.update(updatePromptedVersion: info.version);
+      }
       if (!mounted) return;
       await showUpdateDialog(context, info);
     } catch (_) {
       // 更新检查失败静默忽略，不打扰主流程
+    } finally {
+      _checkingUpdate = false;
     }
   }
 
@@ -268,8 +282,13 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
   /// 开屏 / 从后台切回即刷新房租、到期、水电提醒与收款进度通知。
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.paused) _wasBackground = true;
     if (state == AppLifecycleState.resumed) {
       NotificationService.instance.refresh();
+      if (_wasBackground) {
+        _wasBackground = false;
+        _autoCheckUpdate();
+      }
     }
   }
 

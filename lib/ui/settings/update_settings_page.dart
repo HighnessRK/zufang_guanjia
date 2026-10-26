@@ -74,7 +74,7 @@ class _UpdateSettingsPageState extends State<UpdateSettingsPage> {
                     children: <Widget>[
                       MiuixBasicComponent(
                         title: '自动检查更新',
-                        summary: '每次启动时静默检查新版本',
+                        summary: '每次启动及每天 09:00、21:00 检查',
                         onClick: () =>
                             cfg.update(autoCheckUpdate: !cfg.autoCheckUpdate),
                         endActions: <Widget>[
@@ -89,7 +89,7 @@ class _UpdateSettingsPageState extends State<UpdateSettingsPage> {
                       MiuixBasicComponent(
                         title: '更新提醒',
                         summary: cfg.autoCheckUpdate
-                            ? '发现新版本时弹窗提醒'
+                            ? '启动时弹窗，后台检查发现新版本时通知'
                             : '开启自动检查更新后生效',
                         enabled: cfg.autoCheckUpdate,
                         onClick: cfg.autoCheckUpdate
@@ -107,6 +107,11 @@ class _UpdateSettingsPageState extends State<UpdateSettingsPage> {
                       ),
                     ],
                   ),
+                ),
+                const Padding(
+                  padding: EdgeInsets.all(16),
+                  child: Text('后台通知需允许系统通知。省电策略可能延迟定时检查；'
+                      '强制停止应用后需重新打开恢复。'),
                 ),
               ],
             );

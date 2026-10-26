@@ -11,6 +11,8 @@ import '../data/models/room.dart';
 import '../data/repository/payment_repository.dart';
 import '../data/repository/person_repository.dart';
 import '../data/repository/room_repository.dart';
+import '../data/repository/receipt_repository.dart';
+import 'receipt_service.dart';
 import 'data_bus.dart';
 import 'notification_service.dart';
 
@@ -98,9 +100,49 @@ class McpTools {
       'get_statistics',
       'create_backup',
     ]),
+    McpCapability('收据与报表', '生成 / 查询 / 删除收据 · 区间费用报表', null, <String>[
+      'generate_receipt', 'list_receipts', 'get_receipt', 'delete_receipt', 'get_fee_report',
+    ]),
   ];
 
   static final List<McpTool> all = <McpTool>[
+    McpTool(name: 'generate_receipt', description: '生成并保存房间账期水电收据快照，同房同期覆盖。',
+      inputSchema: _schema(<String, Object?>{'roomNo': _str('房号'), 'period': _str('账期 yyyy-MM')}, required: <String>['roomNo', 'period']),
+      handler: (Map<String, dynamic> a) async {
+        final receipt = await ReceiptService.generate(_reqStr(a, 'roomNo'), _period(a, 'period'));
+        DataBus.instance.notify();
+        return receipt.toMap();
+      }),
+    McpTool(name: 'list_receipts', description: '查询历史收据，可按房号过滤。',
+      inputSchema: _schema(<String, Object?>{'roomNo': _str('房号，可选')}),
+      handler: (Map<String, dynamic> a) async {
+        final receipts = await ReceiptRepository.instance.all();
+        final String? room = _optStr(a['roomNo']);
+        return receipts.where((r) => room == null || r.roomNo == room).map((r) => r.toMap()).toList();
+      }),
+    McpTool(name: 'get_receipt', description: '查看房间账期已保存的收据快照。',
+      inputSchema: _schema(<String, Object?>{'roomNo': _str('房号'), 'period': _str('账期 yyyy-MM')}, required: <String>['roomNo', 'period']),
+      handler: (Map<String, dynamic> a) async =>
+        (await ReceiptRepository.instance.find(_reqStr(a, 'roomNo'), _period(a, 'period')))?.toMap()),
+    McpTool(name: 'delete_receipt', description: '删除指定历史收据，需要用户明确确认后设置 confirmed=true。',
+      inputSchema: _schema(<String, Object?>{'id': <String, Object?>{'type': 'integer'}, 'confirmed': <String, Object?>{'type': 'boolean'}}, required: <String>['id', 'confirmed']),
+      handler: (Map<String, dynamic> a) async {
+        if (a['confirmed'] != true || a['id'] is! int || (a['id'] as int) <= 0) {
+          throw ArgumentError('请确认删除并提供有效收据 ID');
+        }
+        await ReceiptRepository.instance.delete(a['id'] as int);
+        DataBus.instance.notify();
+        return <String, Object?>{'ok': true};
+      }),
+    McpTool(name: 'get_fee_report', description: '按账期区间汇总各类费用的应收、实收、欠费。',
+      inputSchema: _schema(<String, Object?>{'from': _str('开始账期 yyyy-MM'), 'to': _str('截止账期 yyyy-MM')}, required: <String>['from', 'to']),
+      handler: (Map<String, dynamic> a) async {
+        final String from = _period(a, 'from'), to = _period(a, 'to');
+        if (from.compareTo(to) > 0) throw ArgumentError('开始账期不能晚于截止账期');
+        final rows = await PaymentRepository.instance.sumByTypeRange(from, to);
+        return rows.map((r) => <String, Object?>{'type': r.payType, 'due': r.due,
+          'paid': r.paid, 'debt': r.debt, 'count': r.count, 'rooms': r.rooms}).toList();
+      }),
     //====================== 房间管理 ======================
     McpTool(
       name: 'list_rooms',
@@ -640,6 +682,7 @@ class McpTools {
           'summerEnd': c.summerEnd,
           'waterCollectDate': c.waterCollectDate,
           'elecCollectDate': c.elecCollectDate,
+          'elecDateIndependent': c.elecDateIndependent,
           'remindDays': c.remindDays,
           'expireRemindDays': c.expireRemindDays,
           'notifyEnabled': c.notifyEnabled,
@@ -667,6 +710,7 @@ class McpTools {
         'summerEnd': _int('智能电费夏季结束月（1-12）'),
         'waterCollectDate': _str('统一收水日期 yyyy-MM-dd'),
         'elecCollectDate': _str('统一收电日期 yyyy-MM-dd'),
+        'elecDateIndependent': _bool('收电日期独立设置，false 表示跟随收水日期'),
         'remindDays': _int('缴费提醒提前天数'),
         'expireRemindDays': _int('到期提醒提前天数'),
         'notifyEnabled': _bool('系统通知开关'),
@@ -688,14 +732,15 @@ class McpTools {
           summerEnd: _optInt(a['summerEnd']),
           waterCollectDate: _optStr(a['waterCollectDate']),
           elecCollectDate: _optStr(a['elecCollectDate']),
+          elecDateIndependent: a['elecDateIndependent'] as bool?,
           remindDays: _optInt(a['remindDays']),
           expireRemindDays: _optInt(a['expireRemindDays']),
-          notifyEnabled: a['notifyEnabled'] == true ? true : null,
-          focusEnabled: a['focusEnabled'] == true ? true : null,
-          premiumMaterial: a['premiumMaterial'] == true ? true : null,
+          notifyEnabled: a['notifyEnabled'] as bool?,
+          focusEnabled: a['focusEnabled'] as bool?,
+          premiumMaterial: a['premiumMaterial'] as bool?,
           updateSource: _optStr(a['updateSource']),
-          autoCheckUpdate: a['autoCheckUpdate'] == true ? true : null,
-          updateNotify: a['updateNotify'] == true ? true : null,
+          autoCheckUpdate: a['autoCheckUpdate'] as bool?,
+          updateNotify: a['updateNotify'] as bool?,
         );
         // 提醒天数 / 通知开关变化 → 重算三端通知
         unawaited(NotificationService.instance.refresh());
@@ -815,6 +860,13 @@ class McpTools {
   }
 
   //========================= 内部工具 =========================
+  static String _period(Map<String, dynamic> args, String key) {
+    final String value = _reqStr(args, key);
+    if (!RegExp(r'^\d{4}-(0[1-9]|1[0-2])$').hasMatch(value)) {
+      throw ArgumentError('$key 必须是 yyyy-MM');
+    }
+    return value;
+  }
 
   /// 写操作完成后：广播界面刷新 + 刷新三端通知
   static Future<void> _afterMutation(String what) async {

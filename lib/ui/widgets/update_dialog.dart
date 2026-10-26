@@ -33,6 +33,35 @@ class _UpdateDialogState extends State<_UpdateDialog> {
   bool _failed = false;
   File? _file;
 
+  /// 下载累计字节数（用于显示「已下 / 共」）
+  int _received = 0;
+
+  /// 总字节数（服务端返回；未知时为 -1，退化成只显示百分比）
+  int _total = -1;
+  DateTime _lastProgress = DateTime.fromMillisecondsSinceEpoch(0);
+  bool _cancelled = false;
+
+  @override
+  void dispose() {
+    _cancelled = true;
+    super.dispose();
+  }
+  late final List<UpdateNoteEntry> _notes =
+      UpdateService.parseUpdateNotes(widget.info.notes);
+
+  @override
+  void initState() {
+    super.initState();
+    _total = widget.info.apkSize ?? -1;
+    if (_total <= 0 && widget.info.apkUrl != null) {
+      UpdateService.probeApkSize(widget.info.apkUrl!).then((int? size) {
+        if (mounted && size != null && _state == 0) {
+          setState(() => _total = size);
+        }
+      });
+    }
+  }
+
   Future<void> _start() async {
     final String url = widget.info.apkUrl ?? '';
     if (url.isEmpty) {
@@ -44,16 +73,30 @@ class _UpdateDialogState extends State<_UpdateDialog> {
     setState(() {
       _state = 1;
       _failed = false;
+      _cancelled = false;
+      _received = 0;
+      // 优先用 Release 里标的体积；下载中若服务端给了 contentLength 会覆盖
+      if (_total <= 0) _total = widget.info.apkSize ?? -1;
     });
     await NotificationService.showUpdateProgress(widget.info.version, 0);
     try {
       final File file = await UpdateService.downloadApk(
         url,
-        (double p) {
+        (double p, int received, int total) {
+          final DateTime now = DateTime.now();
+          if (p < 1 && now.difference(_lastProgress).inMilliseconds < 150) return;
+          _lastProgress = now;
           final int pct = (p * 100).clamp(0, 100).round();
-          if (mounted) setState(() => _state = pct == 0 ? 1 : pct);
+          if (mounted) {
+            setState(() {
+              _state = pct == 0 ? 1 : pct;
+              _received = received;
+              if (total > 0) _total = total;
+            });
+          }
           NotificationService.showUpdateProgress(widget.info.version, pct);
         },
+        isCancelled: () => _cancelled,
       );
       if (!mounted) return;
       setState(() {
@@ -70,6 +113,14 @@ class _UpdateDialogState extends State<_UpdateDialog> {
       }
       await NotificationService.cancelUpdateNotification();
     }
+  }
+
+  /// 下载中按钮文案：「正在下载 12% · 3.2 MB / 23.3 MB」
+  String get _dlLabel {
+    final String sizePart = _total > 0
+        ? ' · ${(_received / 1048576).toStringAsFixed(1)} MB / ${(_total / 1048576).toStringAsFixed(1)} MB'
+        : ' · ${(_received / 1048576).toStringAsFixed(1)} MB';
+    return '正在下载 $_state%$sizePart';
   }
 
   Future<void> _install() async {
@@ -99,10 +150,10 @@ class _UpdateDialogState extends State<_UpdateDialog> {
   Widget build(BuildContext context) {
     final MiuixColors c = MiuixTheme.of(context).colors;
     final UpdateInfo info = widget.info;
-    final String sizeText = info.apkSize != null && info.apkSize! > 0
-        ? '大小：${(info.apkSize! / 1024 / 1024).toStringAsFixed(1)} MB'
-        : '';
-    final List<UpdateNoteEntry> notes = UpdateService.parseUpdateNotes(info.notes);
+    final String sizeText = _total > 0
+        ? '更新包：${(_total / 1048576).toStringAsFixed(1)} MB'
+        : '更新包大小：暂未获取';
+    final List<UpdateNoteEntry> notes = _notes;
     final String dateText =
         info.date.isNotEmpty ? (sizeText.isEmpty ? '' : '  ·  ') + info.date : '';
 
@@ -192,6 +243,8 @@ class _UpdateDialogState extends State<_UpdateDialog> {
                 ),
               ),
               const SizedBox(height: 12),
+              MiuixText(_dlLabel, fontSize: 12, color: c.onSurfaceVariantSummary),
+              const SizedBox(height: 8),
               Row(
                 children: <Widget>[
                   Expanded(
@@ -202,9 +255,9 @@ class _UpdateDialogState extends State<_UpdateDialog> {
                     }),
                   ),
                   const SizedBox(width: 12),
-                  Expanded(
+                  const Expanded(
                     child: GradientButton(
-                      label: '正在下载 $_state%',
+                      label: '正在下载',
                       onPressed: null,
                     ),
                   ),

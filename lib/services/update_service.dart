@@ -109,38 +109,48 @@ class UpdateService {
   static const List<String> kNoteTypes = <String>['新增', '优化', '修复', '变更', '安全'];
 
   /// 解析 Release 说明正文为条目列表。
-  /// 剥掉 markdown 标题符号 / 分隔线 / 安装包体积等噪声。
+  ///
+  /// 仅清理 Markdown 展示符号；远端已损坏为问号的中文必须修复发布正文，
+  /// 不能通过替换标点恢复。HTTP 响应统一按 UTF-8 解码。
+  /// - 逐行识别：`###` 标题、`-`/`*`/`+`/`•`/`1.` 列表符号、行内前缀；
+  /// - 只保留「有实质内容」的行；标题只用于**继承分组类型**，不再丢掉；
+  /// - `.apk` / Android 7 / 下载 等**噪声行**依然跳过（体积在弹窗里有
+  ///   专门的位置，不塞进正文）。
+  ///
   /// 支持两种写法：
-  /// 1. 分组标题 + 列表（`### 新增` 后跟 `- 条目`）——标题记录当前分组，
-  ///    其后条目沿用该类型（否则颜色标签全部丢失）；
-  /// 2. 行内前缀（`新增：条目`）——逐行识别。
+  /// 1. 分组标题 + 列表（`### 新增` 后跟 `- 条目`）；
+  /// 2. 行内前缀（`新增：条目`）。
   static List<UpdateNoteEntry> parseUpdateNotes(String notes) {
     final List<UpdateNoteEntry> out = <UpdateNoteEntry>[];
     String currentType = '';
     for (String raw in notes.split('\n')) {
-      String line = raw.trim();
+      String line = _clean(raw);
       if (line.isEmpty) continue;
-      // 跳过分隔线
+      // 跳过分隔线（--- / === / ***）
       if (RegExp(r'^[-*_=\s]{3,}$').hasMatch(line)) continue;
-      // 跳过安装包体积行
-      if (line.contains('.apk') || line.contains('Android 7')) continue;
-      // markdown 标题行：类型标题（新增/优化/…）记录当前分组；
-      // 其它标题（更新内容 / 下载等）直接跳过，不混入条目
+      // 跳过安装包体积 / 下载引导等噪声行
+      if (line.contains('.apk')) continue;
+      // markdown 标题行：类型标题记录当前分组；其它标题跳过
       if (line.startsWith('#')) {
         final String title =
             line.replaceFirst(RegExp(r'^#{1,6}\s*'), '').trim();
         if (kNoteTypes.contains(title)) currentType = title;
         continue;
       }
-      // 去掉列表符号
+      // 去掉列表符号（- * + • 以及 "1." / "2、" 等数字序号）
       line = line.replaceFirst(RegExp(r'^[-*+•]\s*'), '');
+      line = line.replaceFirst(RegExp(r'^\d+[.、)）]\s*'), '');
+      if (line.startsWith('下载') ||
+          RegExp(r'^(适用\s*)?Android\s*\d', caseSensitive: false)
+              .hasMatch(line)) {
+        continue;
+      }
       if (line.trim().isEmpty) continue;
       String type = currentType;
       for (final String t in kNoteTypes) {
         if (line.startsWith(t)) {
           type = t;
           line = line.substring(t.length).trim();
-          // 剥掉「：」
           if (line.startsWith('：') || line.startsWith(':')) {
             line = line.substring(1).trim();
           }
@@ -151,6 +161,26 @@ class UpdateService {
       out.add(UpdateNoteEntry(type, line.trim()));
     }
     return out;
+  }
+
+  /// 字符级清洗：markdown 强调符 / 全角引号 / 零宽字符 → 可读文本。
+  static String _clean(String raw) {
+    String s = raw;
+    // 零宽字符（BOM / 断字 / 非断空格等）
+    s = s.replaceAll(RegExp('[​‌‍﻿ ]'), '');
+    // markdown 强调符：**粗体** *斜体* ~~删除线~~ __粗__ _斜_
+    s = s.replaceAll(RegExp(r'\*{1,3}|_{1,3}|~{1,2}'), '');
+    // 反引号代码包裹 → 取内容
+    s = s.replaceAll('`', '');
+    return s.trim();
+  }
+
+  /// 格式化字节数为可读大小（用于弹窗 / 通知里的「更新包大小」）
+  static String formatSize(int bytes) {
+    if (bytes <= 0) return '';
+    final double mb = bytes / 1024 / 1024;
+    if (mb >= 1) return '${mb.toStringAsFixed(1)} MB';
+    return '${(bytes / 1024).toStringAsFixed(0)} KB';
   }
 
   /// GitHub：GET /repos/{owner}/{repo}/releases/latest
@@ -165,9 +195,9 @@ class UpdateService {
       request.headers.set('Accept', 'application/vnd.github+json');
       // GitHub API 强制要求 User-Agent
       request.headers.set('User-Agent', 'zufang-guanjia-updater');
-      final HttpClientResponse response = await request.close();
+      final HttpClientResponse response = await request.close().timeout(const Duration(seconds: 15));
       if (response.statusCode != 200) return null;
-      final String body = await response.transform(utf8.decoder).join();
+      final String body = await response.transform(utf8.decoder).join().timeout(const Duration(seconds: 15));
       final Map<String, dynamic> json =
           jsonDecode(body) as Map<String, dynamic>;
       final String tag = (json['tag_name'] ?? '') as String;
@@ -198,9 +228,9 @@ class UpdateService {
     try {
       final HttpClientRequest request = await client.getUrl(uri);
       request.headers.set('User-Agent', 'zufang-guanjia-updater');
-      final HttpClientResponse response = await request.close();
+      final HttpClientResponse response = await request.close().timeout(const Duration(seconds: 15));
       if (response.statusCode != 200) return null;
-      final String body = await response.transform(utf8.decoder).join();
+      final String body = await response.transform(utf8.decoder).join().timeout(const Duration(seconds: 15));
       final List<dynamic> list = jsonDecode(body) as List<dynamic>;
       Map<String, dynamic>? best;
       for (final dynamic e in list) {
@@ -265,10 +295,30 @@ class UpdateService {
     return null;
   }
 
+  /// Gitee 附件列表不含 size，使用 HEAD 补取；失败时保持未知。
+  static Future<int?> probeApkSize(String url) async {
+    final HttpClient client = HttpClient()
+      ..connectionTimeout = const Duration(seconds: 10);
+    try {
+      final request = await client.openUrl('HEAD', Uri.parse(url))
+          .timeout(const Duration(seconds: 10));
+      final response = await request.close().timeout(const Duration(seconds: 10));
+      return response.statusCode == 200 && response.contentLength > 0
+          ? response.contentLength : null;
+    } catch (_) {
+      return null;
+    } finally {
+      client.close(force: true);
+    }
+  }
+
   /// 下载 APK 到应用缓存目录（FileProvider 已覆盖 cache/）；
-  /// [onProgress] 上报 0.0~1.0。
+  /// [onProgress] 上报 0.0~1.0、累计字节数、总字节数（-1 = 未知）。
   static Future<File> downloadApk(
-      String url, void Function(double progress) onProgress) async {
+    String url,
+    void Function(double progress, int received, int total) onProgress,
+    {bool Function()? isCancelled}
+  ) async {
     final HttpClient client = HttpClient()
       ..connectionTimeout = const Duration(seconds: 15);
     try {
@@ -284,10 +334,15 @@ class UpdateService {
       int received = 0;
       try {
         await for (final List<int> chunk in response) {
+          if (isCancelled?.call() ?? false) {
+            throw const HttpException('下载已取消');
+          }
           sink.add(chunk);
           received += chunk.length;
           if (total > 0) {
-            onProgress((received / total).clamp(0.0, 1.0));
+            onProgress((received / total).clamp(0.0, 1.0), received, total);
+          } else {
+            onProgress(0.0, received, -1);
           }
         }
         await sink.flush();
@@ -297,7 +352,7 @@ class UpdateService {
       if (total > 0 && received < total) {
         throw const HttpException('下载不完整');
       }
-      onProgress(1.0);
+      onProgress(1.0, received, total > 0 ? total : received);
       return file;
     } finally {
       client.close(force: true);

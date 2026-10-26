@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_miuix/miuix.dart';
 
 import '../../core/config/app_config.dart';
+import '../../services/llm_models_service.dart';
 import '../widgets/app_widgets.dart';
 import 'settings_edit.dart';
 
@@ -14,6 +15,52 @@ class LlmSettingsPage extends StatefulWidget {
 }
 
 class _LlmSettingsPageState extends State<LlmSettingsPage> {
+  List<String> _models = <String>[];
+  bool _loading = false;
+  String _error = '';
+  int _requestId = 0;
+
+  @override
+  void initState() {
+    super.initState();
+    if (AppConfig.instance.llmBaseUrl.isNotEmpty) _loadModels();
+  }
+
+  Future<void> _loadModels() async {
+    final int id = ++_requestId;
+    setState(() { _loading = true; _error = ''; _models = <String>[]; });
+    final AppConfig cfg = AppConfig.instance;
+    try {
+      final List<String> models = await LlmModelsService.fetch(cfg.llmBaseUrl, cfg.llmApiKey);
+      if (!mounted || id != _requestId) return;
+      setState(() { _models = models; _error = models.isEmpty ? '接口返回空列表，可手动填写模型名' : ''; });
+    } catch (e) {
+      if (mounted && id == _requestId) setState(() => _error = e.toString());
+    } finally {
+      if (mounted && id == _requestId) setState(() => _loading = false);
+    }
+  }
+
+  Future<void> _chooseModel(bool vision) async {
+    final AppConfig cfg = AppConfig.instance;
+    final String title = vision ? '视觉模型' : '对话模型';
+    final String? choice = await showDialog<String>(context: context,
+      builder: (BuildContext ctx) => SimpleDialog(title: Text(title), children: <Widget>[
+        const Padding(padding: EdgeInsets.all(16), child: Text('模型列表由服务商返回；用于拍照时请选择支持图片输入的模型。')),
+        for (final String model in _models) SimpleDialogOption(
+          onPressed: () => Navigator.of(ctx).pop(model), child: Text(model)),
+        SimpleDialogOption(onPressed: () => Navigator.of(ctx).pop(''), child: const Text('手动输入模型名')),
+      ]));
+    if (!mounted || choice == null) return;
+    Future<void> save(String value) async {
+      await cfg.update(llmVisionModel: vision ? value.trim() : null,
+          llmModel: vision ? null : value.trim());
+      _refresh();
+    }
+    if (choice.isNotEmpty) { await save(choice); return; }
+    editTextDialog(context, title, '填写服务商支持的模型 ID',
+        vision ? cfg.llmVisionModel : cfg.llmModel, '模型 ID', save);
+  }
   @override
   Widget build(BuildContext context) {
     final MiuixColors c = MiuixTheme.of(context).colors;
@@ -55,6 +102,7 @@ class _LlmSettingsPageState extends State<LlmSettingsPage> {
                           (String v) async {
                             await cfg.update(llmBaseUrl: v);
                             _refresh();
+                            _loadModels();
                           },
                         ),
                   ),
@@ -71,6 +119,7 @@ class _LlmSettingsPageState extends State<LlmSettingsPage> {
                           (String v) async {
                             await cfg.update(llmApiKey: v.trim());
                             _refresh();
+                            _loadModels();
                           },
                         ),
                   ),
@@ -80,38 +129,21 @@ class _LlmSettingsPageState extends State<LlmSettingsPage> {
                     summary: cfg.llmVisionModel.isEmpty
                         ? '未配置（电表拍照识别用）'
                         : cfg.llmVisionModel,
-                    onClick: () => editTextDialog(
-                          context,
-                          '视觉模型',
-                          '用于电表照片识别读数（单房间 / 整层批量）',
-                          cfg.llmVisionModel,
-                          'qwen-vl-max / gpt-4o-mini …',
-                          (String v) async {
-                            await cfg.update(llmVisionModel: v.trim());
-                            _refresh();
-                          },
-                        ),
+                    onClick: () => _chooseModel(true),
                   ),
                   const MiuixHorizontalDivider(),
                   MiuixArrowPreference(
                     title: '对话模型（预留）',
                     summary: cfg.llmModel.isEmpty ? '未配置' : cfg.llmModel,
-                    onClick: () => editTextDialog(
-                          context,
-                          '对话模型',
-                          '预留接口，后续智能记账等能力使用',
-                          cfg.llmModel,
-                          'deepseek-chat / gpt-4o-mini …',
-                          (String v) async {
-                            await cfg.update(llmModel: v.trim());
-                            _refresh();
-                          },
-                        ),
+                    onClick: () => _chooseModel(false),
                   ),
                 ],
               ),
             ),
             const SizedBox(height: 16),
+            TextButton(onPressed: _loading ? null : _loadModels,
+                child: Text(_loading ? '正在获取模型…' : '刷新可用模型（${_models.length}）')),
+            if (_error.isNotEmpty) Text(_error),
             MiuixText(
               '仅在点「拍照识别」时发送当前这张照片。',
               fontSize: 12,

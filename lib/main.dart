@@ -11,6 +11,7 @@ import 'services/backup_service.dart';
 import 'services/mcp_server.dart';
 import 'services/mcp_tools.dart';
 import 'services/notification_service.dart';
+import 'services/native_bridge.dart';
 import 'ui/widgets/app_widgets.dart';
 
 /// 程序入口。
@@ -35,6 +36,19 @@ Future<void> main() async {
 
   // 1) 读取 info.gwt
   await AppConfig.instance.init();
+  String lastSchedule = '';
+  void syncUpdateSchedule() {
+    final AppConfig cfg = AppConfig.instance;
+    final String signature = '${cfg.autoCheckUpdate}:${cfg.updateNotify}:${cfg.updateSource}';
+    if (signature == lastSchedule) return;
+    lastSchedule = signature;
+    NativeBridge.configureUpdateSchedule(cfg.autoCheckUpdate && cfg.updateNotify,
+        cfg.updateSource).catchError((Object e) {
+      debugPrint('后台更新计划配置失败：$e');
+    });
+  }
+  AppConfig.instance.addListener(syncUpdateSchedule);
+  syncUpdateSchedule();
 
   // 2) 打开数据库
   await DatabaseHelper.instance.database;

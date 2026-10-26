@@ -5,8 +5,8 @@ class AppConstants {
 
   //========================= 应用信息 =========================
   static const String appName = '租房管家';
-  static const String appVersion = '1.1.3';
-  static const String appBuild = '11';
+  static const String appVersion = '1.1.4';
+  static const String appBuild = '12';
 
   /// ====== 应用内更新：Release 仓库（GitHub / Gitee 同名公开仓库）======
   static const String updateRepoName = 'zufang_guanjia';
@@ -19,7 +19,8 @@ class AppConstants {
   static const String dbName = 'rental.db';
   /// 数据库版本：v2 = people 主租户标记；v3 = people 身份证跟随租户（2026-10）
   /// v5 = receipts 电子收据表（v1.1.3）
-  static const int dbVersion = 5;
+  /// v6 = receipts 增加上期/本期读数快照列（v1.1.4）
+  static const int dbVersion = 6;
 
   /// 房间信息表
   static const String tableRooms = 'rooms';

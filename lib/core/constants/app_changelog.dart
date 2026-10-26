@@ -31,6 +31,15 @@ class AppChangelog {
 
   /// 全部版本（倒序：最新在最前）
   static const List<ChangelogVersion> versions = <ChangelogVersion>[
+    ChangelogVersion('1.1.4', '2026-10-26', <ChangelogEntry>[
+      ChangelogEntry('修复', '更新说明解析与中文发布编码校验'),
+      ChangelogEntry('新增', '每次启动提醒新版本，每天早晚后台检查'),
+      ChangelogEntry('优化', '更新弹窗显示包大小及已下载 / 总大小'),
+      ChangelogEntry('优化', '收据增加上下期读数、单价和大写金额，去除品牌'),
+      ChangelogEntry('新增', 'MCP 支持收据管理、区间报表，复制仅含地址'),
+      ChangelogEntry('新增', '大模型配置自动获取模型列表，支持选择或手填'),
+      ChangelogEntry('优化', '下载进度限频刷新，更新说明缓存解析'),
+    ]),
     ChangelogVersion('1.1.3', '2026-10-26', <ChangelogEntry>[
       ChangelogEntry('新增', '电子收据：一键生成水、电收据图片，'
           '可保存相册、转发微信'),

@@ -66,20 +66,18 @@ class ReceiptService {
     // 租户名两种情况都取房间当前主租户。
     int? waterUse, elecUse;
     double? waterPrice, elecPrice;
+    int? waterPrev, waterCurr, elecPrev, elecCurr;
     String tenant = '';
-    final List<Room> rooms = await RoomRepository.instance.all();
-    Room? hit;
-    for (final Room r in rooms) {
-      if (r.roomNo == roomNo) {
-        hit = r;
-        break;
-      }
-    }
+    final Room? hit = await RoomRepository.instance.byRoomNo(roomNo);
     if (hit != null) {
       tenant = hit.tenant;
       if (period == DateUtil.currentPeriod) {
-        waterUse = hit.waterCurr - hit.waterPrev;
-        elecUse = hit.elecCurr - hit.elecPrev;
+        waterPrev = hit.waterPrev;
+        waterCurr = hit.waterCurr;
+        elecPrev = hit.elecPrev;
+        elecCurr = hit.elecCurr;
+        waterUse = waterCurr - waterPrev;
+        elecUse = elecCurr - elecPrev;
         if (waterUse < 0) waterUse = 0;
         if (elecUse < 0) elecUse = 0;
         waterPrice = AppConfig.instance.waterPrice;
@@ -97,6 +95,10 @@ class ReceiptService {
       elecUse: elecUse,
       waterPrice: waterPrice,
       elecPrice: elecPrice,
+      waterPrev: waterPrev,
+      waterCurr: waterCurr,
+      elecPrev: elecPrev,
+      elecCurr: elecCurr,
       tenant: tenant,
     );
   }
@@ -111,6 +113,10 @@ class ReceiptService {
     int? elecUse,
     double? waterPrice,
     double? elecPrice,
+    int? waterPrev,
+    int? waterCurr,
+    int? elecPrev,
+    int? elecCurr,
     String tenant = '',
   }) {
     // 编号：SJ-账期-房号（同房同期唯一，重生成即覆盖同号）
@@ -127,6 +133,10 @@ class ReceiptService {
       elecUse: elecUse,
       waterPrice: waterPrice,
       elecPrice: elecPrice,
+      waterPrev: waterPrev,
+      waterCurr: waterCurr,
+      elecPrev: elecPrev,
+      elecCurr: elecCurr,
       createdAt: DateUtil.formatDateTime(DateTime.now()),
     );
   }

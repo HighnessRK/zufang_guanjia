@@ -4,6 +4,7 @@
     <!-- ====== 通知相关权限 ====== -->
     <!-- Android 13+ 通知运行时权限 -->
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
     <!-- 大模型拍照识别（仅用户主动触发时联网调用 API） -->
     <uses-permission android:name="android.permission.INTERNET" />
     <!-- Android 12+ 通知小图标需要 -->
@@ -71,6 +72,16 @@
         </activity>
 
         <!-- ====== Live Update 被划掉 / 取消关注时记录状态 ====== -->
+        <receiver android:name=".UpdateAlarmReceiver" android:exported="false">
+            <intent-filter>
+                <action android:name="android.intent.action.BOOT_COMPLETED" />
+                <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
+                <action android:name="android.intent.action.TIME_SET" />
+                <action android:name="android.intent.action.TIMEZONE_CHANGED" />
+            </intent-filter>
+        </receiver>
+        <service android:name=".UpdateCheckJob" android:exported="false"
+            android:permission="android.permission.BIND_JOB_SERVICE" />
         <receiver
             android:name=".notify.LiveDismissReceiver"
             android:exported="false" />

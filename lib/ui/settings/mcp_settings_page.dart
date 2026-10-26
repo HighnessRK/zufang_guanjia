@@ -113,9 +113,9 @@ class _McpSettingsPageState extends State<McpSettingsPage> {
 
             //==================== 配置复制 ====================
             const SizedBox(height: 20),
-            _buildCopyButton('复制本机配置'),
+            _buildCopyButton('复制本机地址'),
             const SizedBox(height: 14),
-            _buildCopyButton('复制局域网配置'),
+            _buildCopyButton('复制局域网地址'),
             const SizedBox(height: 12),
             MiuixText(
               '本机配置： 本机使用，IP 固定不变\n'
@@ -127,8 +127,8 @@ class _McpSettingsPageState extends State<McpSettingsPage> {
             ),
             const SizedBox(height: 8),
             MiuixText(
-              '复制后粘贴到 AI 客户端的 MCP 配置里即可；'
-              '端口固定 ${AppConstants.mcpPort}，配置一次长期有效。',
+               '仅复制服务地址，不含 JSON 语法；粘贴到 AI 客户端的 MCP 地址栏。'
+               '端口固定 ${AppConstants.mcpPort}，局域网 IP 变化后需重新复制。',
               fontSize: 12,
               height: 1.6,
               color: c.onSurfaceVariantSummary,
@@ -245,13 +245,13 @@ class _McpSettingsPageState extends State<McpSettingsPage> {
       AppSnackbar.show('MCP Server 未运行，请先开启上面的开关');
       return;
     }
-    if (which == '复制局域网配置' && server.lanIp.isEmpty) {
+    if (which == '复制局域网地址' && server.lanIp.isEmpty) {
       AppSnackbar.show('未获取到局域网 IP，请确认手机已连接 WiFi');
       return;
     }
-    final String json =
-        which == '复制本机配置' ? server.configLocal : server.configLan;
-    await Clipboard.setData(ClipboardData(text: json));
+    final String address =
+        which == '复制本机地址' ? server.addressLocal : server.addressLan;
+    await Clipboard.setData(ClipboardData(text: address));
     if (mounted) AppSnackbar.show('$which 已复制');
   }
 

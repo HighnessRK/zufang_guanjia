@@ -108,6 +108,7 @@ class DatabaseHelper {
     ''');
 
     // 4) 电子收据表（v1.1.3）：房间号 + 账期 唯一，房间删除级联清理
+    //    v1.1.4 补上期/本期读数快照列
     await _createReceipts(db);
 
     // 常用查询索引
@@ -135,6 +136,10 @@ class DatabaseHelper {
         elec_use   INTEGER,                       -- 用量快照（度，可空）
         water_price REAL,                         -- 水价快照（元/吨）
         elec_price REAL,                          -- 电价快照（元/度）
+        water_prev INTEGER,                       -- 上期水表读数快照（v1.1.4）
+        water_curr INTEGER,                       -- 本期水表读数快照（v1.1.4）
+        elec_prev  INTEGER,                       -- 上期电表读数快照（v1.1.4）
+        elec_curr  INTEGER,                       -- 本期电表读数快照（v1.1.4）
         note       TEXT    NOT NULL DEFAULT '',
         created_at TEXT    NOT NULL,              -- 生成时间 yyyy-MM-dd HH:mm
         UNIQUE (room_no, period),
@@ -144,6 +149,19 @@ class DatabaseHelper {
     ''');
     await db.execute(
         'CREATE INDEX IF NOT EXISTS idx_receipts_created ON ${AppConstants.tableReceipts} (created_at)');
+  }
+
+  /// 给 v5 receipts 表补上期/本期读数快照列。
+  Future<void> _upgradeReceiptsV6(Database db) async {
+    for (final String col in <String>[
+      'water_prev INTEGER',
+      'water_curr INTEGER',
+      'elec_prev INTEGER',
+      'elec_curr INTEGER',
+    ]) {
+      await db.execute(
+          'ALTER TABLE ${AppConstants.tableReceipts} ADD COLUMN $col');
+    }
   }
 
   /// 版本升级
@@ -231,6 +249,11 @@ class DatabaseHelper {
     // v4 → v5：新增电子收据表（v1.1.3）
     if (oldVersion < 5) {
       await _createReceipts(db);
+    }
+
+    // v5 → v6：电子收据增加上期/本期读数快照列（v1.1.4）
+    if (oldVersion == 5) {
+      await _upgradeReceiptsV6(db);
     }
   }
 

@@ -81,6 +81,13 @@ class MainActivity : FlutterActivity() {
 
         methodChannel?.setMethodCallHandler { call, result ->
             when (call.method) {
+                "configureUpdateSchedule" -> {
+                    UpdateScheduler.configure(this,
+                        call.argument<Boolean>("enabled") ?: true,
+                        call.argument<String>("source") ?: "gitee",
+                        call.argument<String>("version") ?: "0")
+                    result.success(null)
+                }
 
                 //==================== 设备信息 ====================
                 "systemInfo" -> {

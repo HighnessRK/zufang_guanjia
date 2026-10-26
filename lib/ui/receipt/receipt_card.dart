@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_miuix/miuix.dart';
 
 import '../../data/models/receipt.dart';
+import '../../core/utils/money_caps.dart';
 
 /// 电子收据渲染卡（v1.1.3）：白色纸质样式，所见即所得 —— 预览与导出
 /// PNG 用的是同一个 widget，导出像素比 3.0 → 约 960px 宽，微信转发清晰。
@@ -73,7 +74,7 @@ class ReceiptCard extends StatelessWidget {
                       fontSize: 16.5,
                       fontWeight: FontWeight.w800,
                       color: _ink),
-                  MiuixText('租房管家 · 电子收据',
+                  MiuixText('电子收据',
                       fontSize: 10, color: _sub),
                 ],
               ),
@@ -96,24 +97,12 @@ class ReceiptCard extends StatelessWidget {
           // 乘式仅在用量 > 0 时展示：欠费/固定金额等场景用量可能为 0，
           // 显示「0 吨 × 6 元/吨」会与右侧金额自相矛盾，此时只显示金额。
           if (merged) ...<Widget>[
-            _line('水电费', _money(r.total)),
+            _line('水电费', '', right: _money(r.total)),
           ] else ...<Widget>[
-            if (showWater)
-              _line(
-                '水费',
-                r.waterUse != null && r.waterUse! > 0 && r.waterPrice != null
-                    ? '${r.waterUse} 吨 × ${_num(r.waterPrice!)} 元/吨'
-                    : '',
-                right: _money(r.waterFee),
-              ),
-            if (showElec)
-              _line(
-                '电费',
-                r.elecUse != null && r.elecUse! > 0 && r.elecPrice != null
-                    ? '${r.elecUse} 度 × ${_num(r.elecPrice!)} 元/度'
-                    : '',
-                right: _money(r.elecFee),
-              ),
+            if (showWater) _meterDetail('水费', '吨', r.waterPrev,
+                r.waterCurr, r.waterUse, r.waterPrice, r.waterFee),
+            if (showElec) _meterDetail('电费', '度', r.elecPrev,
+                r.elecCurr, r.elecUse, r.elecPrice, r.elecFee),
           ],
           const SizedBox(height: 10),
           _divider(),
@@ -132,6 +121,8 @@ class ReceiptCard extends StatelessWidget {
                   color: _accent),
             ],
           ),
+          const SizedBox(height: 8),
+          _kv('金额大写', MoneyCaps.from(r.total)),
           const SizedBox(height: 12),
           _divider(),
           const SizedBox(height: 8),
@@ -141,7 +132,7 @@ class ReceiptCard extends StatelessWidget {
           if (r.note.isNotEmpty) _kv('备    注', r.note, small: true),
           const SizedBox(height: 8),
           const Center(
-            child: MiuixText('本收据由租房管家自动生成 · 仅作水电费收缴凭证',
+            child: MiuixText('仅作水电费收缴凭证',
                 fontSize: 9.5, color: _sub),
           ),
         ],
@@ -150,6 +141,22 @@ class ReceiptCard extends StatelessWidget {
   }
 
   Widget _divider() => Container(height: 1, color: _hair);
+
+  Widget _meterDetail(String label, String unit, int? prev, int? curr,
+      int? use, double? price, int fee) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: <Widget>[
+        _line(label, '', right: _money(fee)),
+        _kv('上期读数', prev == null ? '未留存' : '$prev $unit', small: true),
+        _kv('本期读数', curr == null ? '未留存' : '$curr $unit', small: true),
+        _kv('本期用量', use == null ? '未留存' : '$use $unit', small: true),
+        _kv('单    价', price == null ? '未留存' : '${_num(price)} 元/$unit',
+            small: true),
+        const SizedBox(height: 6),
+      ],
+    );
+  }
 
   Widget _kv(String k, String v, {bool small = false}) {
     return Padding(

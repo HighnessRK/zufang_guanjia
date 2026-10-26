@@ -50,6 +50,9 @@ class McpServer {
   /// 本机配置 JSON：AI 客户端在**手机本机**上运行时用回环地址
   String get configLocal => _configJson(_endpoint('127.0.0.1'));
 
+  String get addressLocal => _endpoint('127.0.0.1');
+  String get addressLan => _lanIp.isEmpty ? '' : _endpoint(_lanIp);
+
   /// 局域网配置 JSON：AI 客户端在**同 WiFi 的电脑**上运行时用手机 IP
   String get configLan => _configJson(
       _endpoint(_lanIp.isEmpty ? '192.168.1.1' : _lanIp));

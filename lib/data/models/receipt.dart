@@ -19,6 +19,10 @@ class Receipt {
     this.elecUse,
     this.waterPrice,
     this.elecPrice,
+    this.waterPrev,
+    this.waterCurr,
+    this.elecPrev,
+    this.elecCurr,
     this.note = '',
     required this.createdAt,
   });
@@ -59,6 +63,18 @@ class Receipt {
   /// 电价快照（元/度）
   final double? elecPrice;
 
+  /// 上期水表读数快照（吨）；v1.1.4 起带，历史快照为空
+  final int? waterPrev;
+
+  /// 本期水表读数快照（吨）
+  final int? waterCurr;
+
+  /// 上期电表读数快照（度）
+  final int? elecPrev;
+
+  /// 本期电表读数快照（度）
+  final int? elecCurr;
+
   /// 备注
   final String note;
 
@@ -81,6 +97,10 @@ class Receipt {
         elecUse: m['elec_use'] as int?,
         waterPrice: (m['water_price'] as num?)?.toDouble(),
         elecPrice: (m['elec_price'] as num?)?.toDouble(),
+        waterPrev: m['water_prev'] as int?,
+        waterCurr: m['water_curr'] as int?,
+        elecPrev: m['elec_prev'] as int?,
+        elecCurr: m['elec_curr'] as int?,
         note: (m['note'] as String?) ?? '',
         createdAt: m['created_at'] as String,
       );
@@ -97,6 +117,10 @@ class Receipt {
         'elec_use': elecUse,
         'water_price': waterPrice,
         'elec_price': elecPrice,
+        'water_prev': waterPrev,
+        'water_curr': waterCurr,
+        'elec_prev': elecPrev,
+        'elec_curr': elecCurr,
         'note': note,
         'created_at': createdAt,
       };

@@ -14,6 +14,12 @@ class NativeBridge {
   static const MethodChannel _channel =
       MethodChannel(AppConstants.nativeChannel);
 
+  static Future<void> configureUpdateSchedule(bool enabled, String source) async {
+    await _channel.invokeMethod<void>('configureUpdateSchedule', <String, Object?>{
+      'enabled': enabled, 'source': source, 'version': AppConstants.appVersion,
+    });
+  }
+
   /// 查询原生层基本信息（厂商、系统版本、是否小米）
   static Future<Map<String, dynamic>> systemInfo() async {
     final Map<dynamic, dynamic> r =
