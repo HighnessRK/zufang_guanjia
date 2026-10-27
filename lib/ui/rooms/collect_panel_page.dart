@@ -40,10 +40,6 @@ class _CollectPanelPageState extends State<CollectPanelPage> {
   /// 水费 / 电费待收：roomNo → 未结清水电流水 due−paid
   Map<String, int> _utilOwed = <String, int>{};
 
-  /// 每房水费 / 电费周期累计额（结算整额入账用）
-  Map<String, int> _waterAccrued = <String, int>{};
-  Map<String, int> _elecAccrued = <String, int>{};
-
   /// 正在收款的项（"roomNo:payType"），禁用对应按钮防重复点击
   final Set<String> _busy = <String>{};
 
@@ -103,12 +99,6 @@ class _CollectPanelPageState extends State<CollectPanelPage> {
       _all = list;
       _rentOwed = rentOwed;
       _utilOwed = utilOwed;
-      _waterAccrued = <String, int>{
-        for (final Room r in list) r.roomNo: r.waterFee,
-      };
-      _elecAccrued = <String, int>{
-        for (final Room r in list) r.roomNo: r.elecFee,
-      };
       _loading = false;
     });
   }
@@ -347,16 +337,7 @@ class _CollectPanelPageState extends State<CollectPanelPage> {
       } else {
         // 水电：按房间当前水/电累计额分别整额结清
         // （各自累计清零 + 该表读数滚动进下一周期）
-        final int w = _waterAccrued[item.roomNo] ?? 0;
-        final int e = _elecAccrued[item.roomNo] ?? 0;
-        if (w > 0) {
-          await PaymentRepository.instance.settleUtility(
-              item.roomNo, AppConstants.payTypeWater, w);
-        }
-        if (e > 0) {
-          await PaymentRepository.instance.settleUtility(
-              item.roomNo, AppConstants.payTypeElec, e);
-        }
+        await PaymentRepository.instance.collectUtilityOwed(item.roomNo);
       }
       await _load();
       if (!mounted) return;

@@ -621,13 +621,21 @@ class MainActivity : FlutterActivity() {
 
         val db = dbBytes ?: return false
 
-        // 覆盖数据库
-        File(dbPath).parentFile?.mkdirs()
-        FileOutputStream(File(dbPath)).use { it.write(db) }
-
-        // 覆盖配置文件（可选）
-        if (cfgBytes != null && configPath.isNotBlank()) {
-            FileOutputStream(File(configPath)).use { it.write(cfgBytes) }
+        // 先做最小完整性校验，再以临时文件替换；损坏/伪造 zip 不得破坏当前数据。
+        if (db.size < 100 || !db.copyOfRange(0, 16).contentEquals(
+                "SQLite format 3\u0000".toByteArray(Charsets.US_ASCII))) return false
+        val dbFile = File(dbPath)
+        val dbTemp = File(dbPath + ".restore.tmp")
+        val cfgFile = if (configPath.isNotBlank()) File(configPath) else null
+        val cfgTemp = cfgFile?.let { File(it.path + ".restore.tmp") }
+        try {
+            dbTemp.writeBytes(db)
+            if (cfgBytes != null && cfgTemp != null) cfgTemp.writeBytes(cfgBytes!!)
+            if (!dbTemp.renameTo(dbFile)) return false
+            if (cfgTemp != null && !cfgTemp.renameTo(cfgFile!!)) return false
+        } finally {
+            dbTemp.delete()
+            cfgTemp?.delete()
         }
         return true
     }

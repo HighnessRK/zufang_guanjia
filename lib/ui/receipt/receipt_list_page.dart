@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_miuix/miuix.dart';
 
 import '../../core/utils/date_util.dart';
+import '../../core/config/app_config.dart';
 import '../../data/models/receipt.dart';
 import '../../data/models/room.dart';
 import '../../data/repository/receipt_repository.dart';
@@ -9,6 +10,7 @@ import '../../data/repository/room_repository.dart';
 import '../../services/receipt_service.dart';
 import '../transitions.dart';
 import '../widgets/app_widgets.dart';
+import '../settings/settings_edit.dart';
 import 'receipt_delete_dialog.dart';
 import 'receipt_viewer_page.dart';
 
@@ -46,6 +48,17 @@ class _ReceiptListPageState extends State<ReceiptListPage> {
   /// 生成收据：选房间 → 选账期 → 生成（同房同期覆盖）→ 预览
   Future<void> _generate() async {
     if (_generating) return;
+    setState(() => _generating = true);
+    try {
+      await _chooseAndGenerate();
+    } catch (e) {
+      if (mounted) AppSnackbar.show(e is StateError ? e.message : '生成失败：$e');
+    } finally {
+      if (mounted) setState(() => _generating = false);
+    }
+  }
+
+  Future<void> _chooseAndGenerate() async {
     final List<Room> rooms = await RoomRepository.instance.all();
     if (rooms.isEmpty) {
       AppSnackbar.show('先添加房间，再生成收据');
@@ -67,6 +80,12 @@ class _ReceiptListPageState extends State<ReceiptListPage> {
       ],
     );
     if (roomNo == null || !mounted) return;
+    final String? kind = await showOptionPicker<String>(context,
+        title: '收据类型', current: 'utility', options: const [
+          MapEntry('utility', '水电费收据'), MapEntry('rent', '房租收据'),
+          MapEntry('water', '仅水费收据'), MapEntry('elec', '仅电费收据'),
+        ]);
+    if (kind == null || !mounted) return;
 
     // 2) 选账期（该房间有水电流水的账期 + 当前账期）
     final List<String> periods = await ReceiptService.periodsOf(roomNo);
@@ -82,11 +101,20 @@ class _ReceiptListPageState extends State<ReceiptListPage> {
       ],
     );
     if (period == null || !mounted) return;
+    final parts = period.split('-');
+    final month = DateTime(int.parse(parts[0]), int.parse(parts[1]), 1);
+    final start = await showDatePickDialog(context, title: '账期开始日期',
+        initialDate: month, firstDate: DateTime(2000), lastDate: DateTime(2100));
+    if (start == null || !mounted) return;
+    final end = await showDatePickDialog(context, title: '账期结束日期',
+        initialDate: DateTime(month.year, month.month + 1, 0).isBefore(start)
+            ? start : DateTime(month.year, month.month + 1, 0),
+        firstDate: start, lastDate: DateTime(2100));
+    if (end == null || !mounted) return;
 
-    // 3) 生成并预览
-    setState(() => _generating = true);
     try {
-      final Receipt receipt = await ReceiptService.generate(roomNo, period);
+      final Receipt receipt = await ReceiptService.generate(roomNo, period,
+          kind: kind, start: DateUtil.format(start), end: DateUtil.format(end));
       await _load();
       if (!mounted) return;
       await Navigator.of(context).push(AppPageRoute<void>(
@@ -95,8 +123,6 @@ class _ReceiptListPageState extends State<ReceiptListPage> {
       await _load();
     } on StateError catch (e) {
       if (mounted) AppSnackbar.show(e.message);
-    } finally {
-      if (mounted) setState(() => _generating = false);
     }
   }
 
@@ -153,6 +179,17 @@ class _ReceiptListPageState extends State<ReceiptListPage> {
                 onPressed: _generate,
               ),
               const SizedBox(height: 14),
+              TextButton.icon(
+                icon: const Icon(Icons.branding_watermark_rounded),
+                label: Text(AppConfig.instance.receiptWatermark.isEmpty
+                    ? '设置自定义水印（以后自动应用）' : '水印：${AppConfig.instance.receiptWatermark}'),
+                onPressed: () => editTextDialog(context, '收据水印',
+                    '设置后以后生成的收据自动添加；留空关闭水印',
+                    AppConfig.instance.receiptWatermark, '水印文字', (value) async {
+                      await AppConfig.instance.update(receiptWatermark: value.replaceAll('\n', ' '));
+                      if (mounted) setState(() {});
+                    }),
+              ),
               if (_list.isEmpty)
                 const EmptyView(
                   '还没有收据',

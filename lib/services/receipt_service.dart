@@ -19,40 +19,60 @@ class ReceiptService {
   /// 生成并落库（同房同期覆盖旧收据），返回收据快照。
   ///
   /// 该房间该账期没有任何水电费用时抛出 [StateError]，由调用方提示。
-  static Future<Receipt> generate(String roomNo, String period) async {
-    final Receipt? receipt = await build(roomNo, period);
-    if (receipt == null) {
-      throw StateError('该房间该账期暂无水电费用');
+  static Future<Receipt> generate(String roomNo, String period,
+      {String kind = 'utility', String? start, String? end}) async {
+    if (!RegExp(r'^\d{4}-(0[1-9]|1[0-2])$').hasMatch(period) ||
+        !['utility', 'rent', 'water', 'elec'].contains(kind)) {
+      throw StateError('收据账期或类型无效');
     }
-    await ReceiptRepository.instance.upsert(receipt);
-    return receipt;
+    if (start != null && end != null &&
+        (DateTime.tryParse(start) == null || DateTime.tryParse(end) == null ||
+         DateTime.parse(end).isBefore(DateTime.parse(start)))) {
+      throw StateError('账期结束日期不能早于开始日期');
+    }
+    final Receipt? receipt = await build(roomNo, period,
+        kind: kind, start: start, end: end);
+    if (receipt == null) {
+      throw StateError('该房间该账期暂无已收款，收据只能按实收金额开具');
+    }
+    return ReceiptRepository.instance.issue(receipt);
   }
 
   /// 构造收据快照（不落库）；无任何水电费用返回 null
-  static Future<Receipt?> build(String roomNo, String period) async {
+  static Future<Receipt?> build(String roomNo, String period,
+      {String kind = 'utility', int sequence = 1, String? start, String? end}) async {
     final PaymentRepository payments = PaymentRepository.instance;
+    if (kind == 'rent') {
+      final Payment? rent = await payments.find(roomNo, AppConstants.payTypeRent, period);
+      if (rent == null || rent.paid <= 0) return null;
+      final room = await RoomRepository.instance.byRoomNo(roomNo);
+      return _make(roomNo: roomNo, period: period, waterFee: 0, elecFee: 0,
+          total: rent.paid, kind: kind, sequence: sequence, start: start, end: end,
+          tenant: room?.tenant ?? '');
+    }
 
     // 金额：优先 water / elec 分开口径；两者皆无再看旧版合并口径 utility
     final Payment? w =
         await payments.find(roomNo, AppConstants.payTypeWater, period);
     final Payment? e =
         await payments.find(roomNo, AppConstants.payTypeElec, period);
-    int waterFee = w?.due ?? 0;
-    int elecFee = e?.due ?? 0;
-    if (waterFee <= 0 && elecFee <= 0) {
+    int waterFee = kind == 'elec' ? 0 : w?.paid ?? 0;
+    int elecFee = kind == 'water' ? 0 : e?.paid ?? 0;
+    if (kind == 'utility' && waterFee <= 0 && elecFee <= 0) {
       final Payment? u =
           await payments.find(roomNo, AppConstants.payTypeUtility, period);
-      if (u != null && u.due > 0) {
+      if (u != null && u.paid > 0) {
         // 旧版「水电费」合并口径：整笔放合计，明细行由收据卡按合并样式展示
         waterFee = 0;
         elecFee = 0;
-        final int total = u.due;
+        final int total = u.paid;
         return _make(
           roomNo: roomNo,
           period: period,
           waterFee: waterFee,
           elecFee: elecFee,
           total: total,
+          kind: kind, sequence: sequence, start: start, end: end,
         );
       }
     }
@@ -71,7 +91,10 @@ class ReceiptService {
     final Room? hit = await RoomRepository.instance.byRoomNo(roomNo);
     if (hit != null) {
       tenant = hit.tenant;
-      if (period == DateUtil.currentPeriod) {
+      // 收款后读数可能已滚动；只有当前累计额仍与实收一致时才能
+      // 使用 rooms 读数，不能给历史实收套上下一期读数。
+      if (period == DateUtil.currentPeriod &&
+          hit.waterFee == waterFee && hit.elecFee == elecFee) {
         waterPrev = hit.waterPrev;
         waterCurr = hit.waterCurr;
         elecPrev = hit.elecPrev;
@@ -100,6 +123,7 @@ class ReceiptService {
       elecPrev: elecPrev,
       elecCurr: elecCurr,
       tenant: tenant,
+      kind: kind, sequence: sequence, start: start, end: end,
     );
   }
 
@@ -118,12 +142,23 @@ class ReceiptService {
     int? elecPrev,
     int? elecCurr,
     String tenant = '',
+    String kind = 'utility',
+    int sequence = 1,
+    String? start,
+    String? end,
   }) {
     // 编号：SJ-账期-房号（同房同期唯一，重生成即覆盖同号）
-    final String no = 'SJ-${period.replaceAll('-', '')}-$roomNo';
+    final String no = 'SJ-${period.replaceAll('-', '')}-$roomNo-${kind == 'rent' ? 'R' : 'U'}-${sequence.toString().padLeft(3, '0')}';
+    final parts = period.split('-');
+    final year = int.parse(parts[0]), month = int.parse(parts[1]);
+    final String first = '$period-01';
+    final String last = DateUtil.format(DateTime(year, month + 1, 0));
     return Receipt(
       roomNo: roomNo,
       period: period,
+      kind: kind, sequence: sequence,
+      periodStart: start ?? first, periodEnd: end ?? last,
+      watermark: AppConfig.instance.receiptWatermark,
       no: no,
       tenant: tenant,
       waterFee: waterFee,
@@ -149,7 +184,6 @@ class ReceiptService {
     final List<String> periods = <String>[];
     for (final Payment p in list) {
       // 只收水电相关流水的账期
-      if (p.payType == AppConstants.payTypeRent) continue;
       if (seen.add(p.period)) {
         periods.add(p.period);
       }

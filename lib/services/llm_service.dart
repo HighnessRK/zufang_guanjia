@@ -22,16 +22,14 @@ class LlmService {
     final AppConfig cfg = _requireVisionConfig();
     final String text = await _chatVision(
       cfg,
-      prompt: '这是一张电表读数照片。只输出表盘上显示的数字读数，'
-          '不要任何其他文字、单位或标点。',
+      prompt: '这是一张电表读数照片。只识别黑色数字轮的整数读数。'
+          '红色小数位、红色数字和小数点全部舍弃，不要四舍五入。'
+          '机械表红色数字轮通常表示0.1位，不能拼入整数。不要读取表号、倍率或铭牌。'
+          '只输出一个整数，不要任何解释、单位或其他数字。',
       imageBytes: imageBytes,
-      maxTokens: 32,
+      maxTokens: 1024,
     );
-    final Match? match = RegExp(r'\d+').firstMatch(text);
-    if (match == null) {
-      throw FormatException('未能解析读数（返回：${_snippet(text)}）');
-    }
-    return int.parse(match.group(0)!);
+    return parseReading(text);
   }
 
   /// 整层批量识别：**按位置顺序**读出照片里每块电表的读数。
@@ -55,12 +53,13 @@ class LlmService {
           '按行排列，每一行内从左到右，逐行从上到下。\n'
           '本层房间号（已按这个顺序排好）：${roomNos.join('、')}。\n'
           '请按同样的空间顺序（每行从左到右、行与行从上到下）逐块读取'
-          '每块电表表盘上的数字读数，第 n 个数字对应第 n 个房间号。\n'
+           '每块电表表盘上的数字读数，第 n 个数字对应第 n 个房间号。\n'
+          '只取黑色整数位，舍弃红色小数位，不四舍五入；看不清的表用null占位，不能省略。\n'
           '只输出一个 JSON 数字数组，元素个数与看到的电表块数一致，'
           '不要任何其他文字、解释或代码块标记，例如：'
           '[24737,35298,11111,21466]',
       imageBytes: imageBytes,
-      maxTokens: 512,
+      maxTokens: 2048,
     );
 
     final Match? m = RegExp(r'\[[\s\S]*?\]').firstMatch(text);
@@ -164,7 +163,7 @@ class LlmService {
       final Object? content =
           message is Map<String, dynamic> ? message['content'] : null;
 
-      return switch (content) {
+      final text = switch (content) {
         final String s => s,
         // OpenAI 新格式 content 为分段数组
         final List<dynamic> list => list
@@ -173,6 +172,10 @@ class LlmService {
             .join(),
         _ => '',
       };
+      if (text.trim().isEmpty) {
+        throw const FormatException('模型没有返回可用识别内容，请确认模型支持图片，或提高服务端输出额度');
+      }
+      return text;
     } finally {
       client.close(force: true);
     }
@@ -181,11 +184,21 @@ class LlmService {
   /// 宽容的整数解析（int / num / 含数字字符串）
   static int? _toInt(Object? v) {
     if (v is int) return v;
-    if (v is num) return v.round();
+    if (v is num) return v.truncate();
     if (v is String) {
-      return int.tryParse(RegExp(r'\d+').firstMatch(v)?.group(0) ?? '');
+      return num.tryParse(v.trim())?.truncate();
     }
     return null;
+  }
+
+  /// 拒绝从解释中的多个数字猜读数；小数统一截断。
+  @visibleForTesting
+  static int parseReading(String text) {
+    final cleaned = text.trim().replaceAll(RegExp(r'^```(?:json)?\s*|\s*```$'), '').trim();
+    if (!RegExp(r'^\d{1,9}(?:\.\d+)?$').hasMatch(cleaned)) {
+      throw FormatException('未能解析唯一读数（返回：${_snippet(text)}）');
+    }
+    return num.parse(cleaned).truncate();
   }
 
   static String _trimSlash(String url) =>

@@ -127,6 +127,10 @@ class DatabaseHelper {
         id         INTEGER PRIMARY KEY AUTOINCREMENT,
         room_no    TEXT    NOT NULL,
         period     TEXT    NOT NULL,              -- 账期 yyyy-MM
+        kind       TEXT    NOT NULL DEFAULT 'utility',
+        sequence   INTEGER NOT NULL DEFAULT 1,
+        period_start TEXT NOT NULL DEFAULT '',
+        period_end TEXT NOT NULL DEFAULT '',
         no         TEXT    NOT NULL DEFAULT '',   -- 收据编号
         tenant     TEXT    NOT NULL DEFAULT '',   -- 租户快照
         water_fee  INTEGER NOT NULL DEFAULT 0,    -- 水费（元）
@@ -141,8 +145,8 @@ class DatabaseHelper {
         elec_prev  INTEGER,                       -- 上期电表读数快照（v1.1.4）
         elec_curr  INTEGER,                       -- 本期电表读数快照（v1.1.4）
         note       TEXT    NOT NULL DEFAULT '',
+        watermark  TEXT    NOT NULL DEFAULT '',
         created_at TEXT    NOT NULL,              -- 生成时间 yyyy-MM-dd HH:mm
-        UNIQUE (room_no, period),
         FOREIGN KEY (room_no) REFERENCES ${AppConstants.tableRooms} (room_no)
           ON DELETE CASCADE
       )
@@ -162,6 +166,30 @@ class DatabaseHelper {
       await db.execute(
           'ALTER TABLE ${AppConstants.tableReceipts} ADD COLUMN $col');
     }
+  }
+
+  Future<void> _upgradeReceiptsV7(Database db) async {
+    // 4.x 老库在本次升级前没有 receipts 表；_createReceipts 已经直接
+    // 创建了最新结构，不能再次 rename/create。
+    final exists = await db.rawQuery(
+        "SELECT name FROM sqlite_master WHERE type='table' AND name=?",
+        <Object?>[AppConstants.tableReceipts]);
+    if (exists.isEmpty) {
+      await _createReceipts(db);
+      return;
+    }
+    // 旧索引会随着表 rename 保留在旧表上，先删除，避免新表建同名索引失败。
+    await db.execute('DROP INDEX IF EXISTS idx_receipts_created');
+    await db.execute('ALTER TABLE ${AppConstants.tableReceipts} RENAME TO receipts_v6');
+    await _createReceipts(db);
+    await db.execute('''INSERT INTO ${AppConstants.tableReceipts}
+      (id, room_no, period, no, tenant, water_fee, elec_fee, total, water_use,
+       elec_use, water_price, elec_price, water_prev, water_curr, elec_prev,
+       elec_curr, note, created_at)
+      SELECT id, room_no, period, no, tenant, water_fee, elec_fee, total,
+       water_use, elec_use, water_price, elec_price, water_prev, water_curr,
+       elec_prev, elec_curr, note, created_at FROM receipts_v6''');
+    await db.execute('DROP TABLE receipts_v6');
   }
 
   /// 版本升级
@@ -254,6 +282,9 @@ class DatabaseHelper {
     // v5 → v6：电子收据增加上期/本期读数快照列（v1.1.4）
     if (oldVersion == 5) {
       await _upgradeReceiptsV6(db);
+    }
+    if (oldVersion >= 5 && oldVersion < 7) {
+      await _upgradeReceiptsV7(db);
     }
   }
 

@@ -157,6 +157,9 @@ class AppConfig extends ChangeNotifier {
   /// 视觉模型名（电表拍照识别用）
   String llmVisionModel = '';
 
+  /// 收据自动水印文字；为空表示不显示水印。
+  String receiptWatermark = '';
+
   /// 应用内更新：下载源 'gitee'（默认，国内快）/ 'github'
   String updateSource = 'gitee';
 
@@ -265,6 +268,7 @@ class AppConfig extends ChangeNotifier {
     llmApiKey = map['llm_api_key'] ?? '';
     llmModel = map['llm_model'] ?? '';
     llmVisionModel = map['llm_vision_model'] ?? '';
+    receiptWatermark = map['receipt_watermark'] ?? '';
     updateSource = map['update_source'] == 'github' ? 'github' : 'gitee';
     autoCheckUpdate = map['auto_check_update'] != '0';
     updateNotify = map['update_notify'] != '0';
@@ -343,6 +347,7 @@ class AppConfig extends ChangeNotifier {
       ..writeln('llm_api_key=$llmApiKey')
       ..writeln('llm_model=$llmModel')
       ..writeln('llm_vision_model=$llmVisionModel')
+      ..writeln('receipt_watermark=$receiptWatermark')
       ..writeln()
       ..writeln('#—— 应用更新 ———')
       ..writeln('# 下载源 gitee / github')
@@ -386,6 +391,7 @@ class AppConfig extends ChangeNotifier {
     String? llmApiKey,
     String? llmModel,
     String? llmVisionModel,
+    String? receiptWatermark,
     String? updateSource,
     bool? autoCheckUpdate,
     bool? updateNotify,
@@ -419,6 +425,7 @@ class AppConfig extends ChangeNotifier {
     this.llmApiKey = llmApiKey ?? this.llmApiKey;
     this.llmModel = llmModel ?? this.llmModel;
     this.llmVisionModel = llmVisionModel ?? this.llmVisionModel;
+    this.receiptWatermark = receiptWatermark ?? this.receiptWatermark;
     this.updateSource = updateSource ?? this.updateSource;
     this.autoCheckUpdate = autoCheckUpdate ?? this.autoCheckUpdate;
     this.updateNotify = updateNotify ?? this.updateNotify;

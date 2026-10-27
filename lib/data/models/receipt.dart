@@ -10,6 +10,10 @@ class Receipt {
     this.id,
     required this.roomNo,
     required this.period,
+    this.kind = 'utility',
+    this.sequence = 1,
+    this.periodStart = '',
+    this.periodEnd = '',
     this.no = '',
     this.tenant = '',
     this.waterFee = 0,
@@ -24,6 +28,7 @@ class Receipt {
     this.elecPrev,
     this.elecCurr,
     this.note = '',
+    this.watermark = '',
     required this.createdAt,
   });
 
@@ -35,6 +40,12 @@ class Receipt {
 
   /// 账期 yyyy-MM
   final String period;
+
+  /// utility = 水电，rent = 房租。
+  final String kind;
+  final int sequence;
+  final String periodStart;
+  final String periodEnd;
 
   /// 收据编号，如 SJ-202610-202
   final String no;
@@ -77,17 +88,28 @@ class Receipt {
 
   /// 备注
   final String note;
+  final String watermark;
 
   /// 生成时间 yyyy-MM-dd HH:mm
   final String createdAt;
 
   /// 收据标题（列表与图片用）：如「2026-10 · 水电费收据」
-  String get title => '$period · 水电费收据';
+  String get kindText => switch (kind) {
+    'rent' => '房租', 'water' => '水费', 'elec' => '电费', _ => '水电费',
+  };
+  String get title => '$period · $kindText收据';
+
+  String get periodText => periodStart.isNotEmpty && periodEnd.isNotEmpty
+      ? '$periodStart — $periodEnd' : period;
 
   factory Receipt.fromMap(Map<String, Object?> m) => Receipt(
         id: m['id'] as int?,
         roomNo: m['room_no'] as String,
         period: m['period'] as String,
+        kind: (m['kind'] as String?) ?? 'utility',
+        sequence: (m['sequence'] as int?) ?? 1,
+        periodStart: (m['period_start'] as String?) ?? '',
+        periodEnd: (m['period_end'] as String?) ?? '',
         no: (m['no'] as String?) ?? '',
         tenant: (m['tenant'] as String?) ?? '',
         waterFee: (m['water_fee'] as int?) ?? 0,
@@ -102,12 +124,17 @@ class Receipt {
         elecPrev: m['elec_prev'] as int?,
         elecCurr: m['elec_curr'] as int?,
         note: (m['note'] as String?) ?? '',
+        watermark: (m['watermark'] as String?) ?? '',
         createdAt: m['created_at'] as String,
       );
 
   Map<String, Object?> toMap() => <String, Object?>{
         'room_no': roomNo,
         'period': period,
+        'kind': kind,
+        'sequence': sequence,
+        'period_start': periodStart,
+        'period_end': periodEnd,
         'no': no,
         'tenant': tenant,
         'water_fee': waterFee,
@@ -122,6 +149,7 @@ class Receipt {
         'elec_prev': elecPrev,
         'elec_curr': elecCurr,
         'note': note,
+        'watermark': watermark,
         'created_at': createdAt,
       };
 

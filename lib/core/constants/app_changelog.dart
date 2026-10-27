@@ -31,6 +31,13 @@ class AppChangelog {
 
   /// 全部版本（倒序：最新在最前）
   static const List<ChangelogVersion> versions = <ChangelogVersion>[
+    ChangelogVersion('1.1.6', '2026-10-27', <ChangelogEntry>[
+      ChangelogEntry('新增', '收据支持自定义水印、房租收据及水费/电费分开开据'),
+      ChangelogEntry('优化', '收据编号加入费用类型与流水号，账期显示完整起止日期'),
+      ChangelogEntry('修复', '按未结清流水结算水电费，避免已收款仍显示待收'),
+      ChangelogEntry('优化', '电表识别明确舍弃红色小数位，并增强空响应与格式校验'),
+      ChangelogEntry('增强', '备份恢复增加 WAL checkpoint、SQLite 校验、临时文件替换和恢复后刷新'),
+    ]),
     ChangelogVersion('1.1.5', '2026-10-26', <ChangelogEntry>[
       ChangelogEntry('优化', '提醒批量读取欠费，减少房间较多时的重复查询'),
       ChangelogEntry('优化', '合并并发通知刷新，避免重复计算与通知竞争'),

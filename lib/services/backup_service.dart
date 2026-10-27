@@ -1,6 +1,7 @@
 import '../core/config/app_config.dart';
 import '../data/db/database_helper.dart';
 import 'native_bridge.dart';
+import 'data_bus.dart';
 
 /// 一份可选的备份文件（用于「默认恢复最新备份」）
 class BackupCandidate {
@@ -61,6 +62,8 @@ class BackupService {
 
   /// 备份：把数据库 + info.gwt 交给系统分享
   Future<String> backup() async {
+    final db = await DatabaseHelper.instance.database;
+    await db.rawQuery('PRAGMA wal_checkpoint(FULL)');
     final String dbPath = await DatabaseHelper.instance.backupPath();
     final String? configPath = AppConfig.instance.configPath;
     if (configPath == null) {
@@ -73,6 +76,8 @@ class BackupService {
   /// MCP `create_backup` 工具注入此实现。
   Future<String?> createBackupFile() async {
     try {
+      final db = await DatabaseHelper.instance.database;
+      await db.rawQuery('PRAGMA wal_checkpoint(FULL)');
       final String dbPath = await DatabaseHelper.instance.backupPath();
       final String? configPath = AppConfig.instance.configPath;
       if (configPath == null) return null;
@@ -126,6 +131,7 @@ class BackupService {
     // 重新加载配置与数据库
     if (ok) {
       await AppConfig.instance.load();
+      DataBus.instance.notify();
     }
     return ok;
   }

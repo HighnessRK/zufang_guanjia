@@ -7,6 +7,7 @@ import '../db/database_helper.dart';
 import '../models/payment.dart';
 import '../models/room.dart';
 import 'room_repository.dart';
+import '../../services/data_bus.dart';
 
 /// 缴费流水表（payments）数据访问层。
 ///
@@ -511,6 +512,31 @@ class PaymentRepository {
     await RoomRepository.instance.setRentPaid(roomNo, paid);
     room.paid = paid;
     await syncRent(room);
+    DataBus.instance.notify();
+  }
+
+  /// 按流水待收额结清，不使用 rooms 中可能已滚动或清零的累计额。
+  Future<void> collectUtilityOwed(String roomNo) async {
+    final db = await DatabaseHelper.instance.database;
+    await db.transaction((txn) async {
+      final rows = await txn.query(AppConstants.tablePayments,
+          where: 'room_no = ? AND pay_type IN (?, ?, ?) AND is_settled = 0 AND due > paid',
+          whereArgs: [roomNo, 'water', 'elec', 'utility']);
+      if (rows.isEmpty) throw StateError('该房间已无待收水电费，请刷新后重试');
+      final types = rows.map((r) => r['pay_type']).toSet();
+      await txn.rawUpdate('UPDATE ${AppConstants.tablePayments} SET paid = due, '
+          'is_settled = 1, pay_time = ? WHERE room_no = ? '
+          'AND pay_type IN (?, ?, ?) AND is_settled = 0 AND due > paid',
+          [DateUtil.formatDateTime(DateTime.now()), roomNo, 'water', 'elec', 'utility']);
+      if (types.contains('water')) {
+        await txn.rawUpdate('UPDATE rooms SET water_fee = 0, water_prev = water_curr WHERE room_no = ?', [roomNo]);
+      }
+      if (types.contains('elec')) {
+        await txn.rawUpdate('UPDATE rooms SET elec_fee = 0, elec_prev = elec_curr WHERE room_no = ?', [roomNo]);
+      }
+      await txn.rawUpdate('UPDATE rooms SET utility_fee = water_fee + elec_fee WHERE room_no = ?', [roomNo]);
+    });
+    DataBus.instance.notify();
   }
 
   //========================= 增删改查 =========================

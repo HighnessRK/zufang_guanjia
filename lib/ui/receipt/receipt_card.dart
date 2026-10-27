@@ -48,7 +48,9 @@ class ReceiptCard extends StatelessWidget {
           ),
         ],
       ),
-      child: Column(
+      child: Stack(
+        children: <Widget>[
+        Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: <Widget>[
           // ===== 标题区 =====
@@ -67,14 +69,14 @@ class ReceiptCard extends StatelessWidget {
                     size: 17, color: Colors.white),
               ),
               const SizedBox(width: 9),
-              const Column(
+              Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: <Widget>[
-                  MiuixText('水电费收据',
+                  MiuixText('${r.kindText}收据',
                       fontSize: 16.5,
                       fontWeight: FontWeight.w800,
                       color: _ink),
-                  MiuixText('电子收据',
+                  const MiuixText('电子收据',
                       fontSize: 10, color: _sub),
                 ],
               ),
@@ -88,7 +90,7 @@ class ReceiptCard extends StatelessWidget {
           _kv('收据编号', r.no),
           _kv('房    号', r.roomNo),
           if (r.tenant.isNotEmpty) _kv('租    户', r.tenant),
-          _kv('账    期', r.period),
+           _kv('账    期', r.periodText),
           const SizedBox(height: 10),
           _divider(),
           const SizedBox(height: 10),
@@ -96,7 +98,9 @@ class ReceiptCard extends StatelessWidget {
           // ===== 费用明细 =====
           // 乘式仅在用量 > 0 时展示：欠费/固定金额等场景用量可能为 0，
           // 显示「0 吨 × 6 元/吨」会与右侧金额自相矛盾，此时只显示金额。
-          if (merged) ...<Widget>[
+          if (r.kind == 'rent') ...<Widget>[
+            _line('房租实收', '', right: _money(r.total)),
+          ] else if (merged) ...<Widget>[
             _line('水电费', '', right: _money(r.total)),
           ] else ...<Widget>[
             if (showWater) _meterDetail('水费', '吨', r.waterPrev,
@@ -131,11 +135,20 @@ class ReceiptCard extends StatelessWidget {
           _kv('生成时间', r.createdAt, small: true),
           if (r.note.isNotEmpty) _kv('备    注', r.note, small: true),
           const SizedBox(height: 8),
-          const Center(
-            child: MiuixText('仅作水电费收缴凭证',
+          Center(
+            child: MiuixText(r.kind == 'rent' ? '仅作房租收缴凭证' : '仅作水电费收缴凭证',
                 fontSize: 9.5, color: _sub),
           ),
         ],
+      ),
+      if (r.watermark.isNotEmpty)
+        Positioned.fill(child: IgnorePointer(child: Center(
+          child: Transform.rotate(angle: -0.45, child: Text(r.watermark,
+            textAlign: TextAlign.center,
+            style: const TextStyle(fontSize: 28, color: Color(0x22333333),
+              fontWeight: FontWeight.bold))),
+        ))),
+      ],
       ),
     );
   }
