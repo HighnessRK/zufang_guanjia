@@ -134,7 +134,12 @@ class UpdateService {
       if (line.startsWith('#')) {
         final String title =
             line.replaceFirst(RegExp(r'^#{1,6}\s*'), '').trim();
-        if (kNoteTypes.contains(title)) currentType = title;
+        currentType = kNoteTypes.firstWhere(
+          (type) => title.startsWith(type),
+          orElse: () => title.contains('验证') || title.contains('注意')
+              ? ''
+              : '新增',
+        );
         continue;
       }
       // 去掉列表符号（- * + • 以及 "1." / "2、" 等数字序号）
@@ -169,7 +174,7 @@ class UpdateService {
     // 零宽字符（BOM / 断字 / 非断空格等）
     s = s.replaceAll(RegExp('[​‌‍﻿ ]'), '');
     // markdown 强调符：**粗体** *斜体* ~~删除线~~ __粗__ _斜_
-    s = s.replaceAll(RegExp(r'\*{1,3}|_{1,3}|~{1,2}'), '');
+    s = s.replaceAll(RegExp(r'\*{1,3}|~{1,2}'), '');
     // 反引号代码包裹 → 取内容
     s = s.replaceAll('`', '');
     return s.trim();

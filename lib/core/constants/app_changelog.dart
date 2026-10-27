@@ -31,6 +31,13 @@ class AppChangelog {
 
   /// 全部版本（倒序：最新在最前）
   static const List<ChangelogVersion> versions = <ChangelogVersion>[
+    ChangelogVersion('1.2.1', '2026-10-27', <ChangelogEntry>[
+      ChangelogEntry('修复', '连接参数删除续输回弹，标识符禁用输入法联想并在输入阶段结束合成'),
+      ChangelogEntry('优化', '飞书 App Secret 使用普通输入法，支持复制粘贴，列表摘要仍隐藏'),
+      ChangelogEntry('修复', '弹窗文字选择菜单层级，补齐复制、剪切、粘贴与全选操作'),
+      ChangelogEntry('优化', '租金报表采用实收总览、进度条和独立费用卡片，日期筛选更紧凑'),
+      ChangelogEntry('修复', '描述性更新分组补充新增标签，保留字段名称中的下划线'),
+    ]),
     ChangelogVersion('1.2.0', '2026-10-27', <ChangelogEntry>[
       ChangelogEntry('新增', '飞书多维表格同步：本地缓存、自动续期、前台定时与变更后同步'),
       ChangelogEntry('增强', '首次上传和下载前自动备份，双方修改冲突时停止覆盖'),

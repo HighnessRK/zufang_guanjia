@@ -6,6 +6,7 @@ import 'package:flutter_miuix/miuix.dart';
 
 import '../../core/config/app_config.dart';
 import '../../core/utils/date_util.dart';
+import 'app_editable_field.dart';
 
 /// 全局可复用的 UI 小组件与工具：分组标题、信息行、统计卡片、
 /// 空状态、HyperOS 风格确认弹窗、全局 Snackbar。
@@ -1779,31 +1780,19 @@ class _AppTextFieldState extends State<AppTextField> {
         crossAxisAlignment: CrossAxisAlignment.start,
         mainAxisSize: MainAxisSize.min,
         children: <Widget>[
-          MiuixTextField(
+          AppEditableField(
             obscureText: widget.obscureText,
             // 聚焦瞬间传空 label → 内部判定 hidden → 灰色提示立即消失
-            label: _focus ? '' : widget.label,
+            label: _focus || !_empty ? '' : widget.label,
             controller: widget.controller,
             focusNode: _focusNode,
             autofocus: widget.autofocus,
             readOnly: widget.readOnly,
             keyboardType: widget.keyboardType,
-            singleLine: true,
-            onChanged: (String v) {
-              // 见 clearComposing：纯 ASCII 字段退格后清掉 composing，防止输入法
-              // 按旧长度把删掉的字符写回来
-              if (widget.clearComposing) {
-                final TextEditingValue cur = widget.controller.value;
-                if (cur.composing.isValid) {
-                  widget.controller.value =
-                      TextEditingValue(text: cur.text, selection: cur.selection);
-                }
-              }
-              widget.onChanged?.call(v);
-            },
+            commitIdentifier: widget.clearComposing,
+            onChanged: widget.onChanged,
             leadingIcon: widget.leadingIcon,
             trailingIcon: widget.trailingIcon,
-            useLabelAsPlaceholder: true,
           ),
           if (widget.belowBuilder != null)
             ValueListenableBuilder<TextEditingValue>(
@@ -1967,18 +1956,16 @@ class _AppLabelFieldState extends State<AppLabelField> {
                 ),
               ),
               Expanded(
-                child: MiuixTextField(
+                child: AppEditableField(
                   // 聚焦瞬间把占位传空 → 灰色提示立即消失，不与输入内容打架
-                  label: _focus ? '' : (widget.hint ?? ''),
+                  label: _focus || !_empty ? '' : (widget.hint ?? ''),
                   controller: widget.controller,
                   focusNode: _focusNode,
                   autofocus: widget.autofocus,
                   // 计数器恒定只读：点按步进钮调数，绝不唤起输入法
                   readOnly: widget.readOnly || widget.stepper != null,
                   keyboardType: widget.keyboardType,
-                  singleLine: true,
                   onChanged: widget.onChanged,
-                  useLabelAsPlaceholder: true,
                   trailingIcon: widget.stepper != null
                       ? _StepperButtons(
                           controller: widget.controller,

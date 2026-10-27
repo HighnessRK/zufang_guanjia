@@ -196,22 +196,39 @@ class _FeeReportPageState extends State<FeeReportPage> {
               ],
             ),
           ),
-          const MiuixHorizontalDivider(),
-          MiuixArrowPreference(
-            title: '开始日期',
-            summary: DateUtil.format(_from),
-            onClick: () => _pick(true),
-          ),
-          const MiuixHorizontalDivider(),
-          MiuixArrowPreference(
-            title: '结束日期',
-            summary: DateUtil.format(_to),
-            onClick: () => _pick(false),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 4, 16, 16),
+            child: Row(children: [
+              Expanded(child: _dateButton(c, '开始日期', _from, true)),
+              Padding(padding: const EdgeInsets.symmetric(horizontal: 10),
+                child: Icon(Icons.arrow_forward_rounded, size: 18,
+                  color: c.onSurfaceVariantSummary)),
+              Expanded(child: _dateButton(c, '结束日期', _to, false)),
+            ]),
           ),
         ],
       ),
     );
   }
+
+  Widget _dateButton(MiuixColors c, String label, DateTime date, bool from) =>
+      Semantics(button: true, child: InkWell(
+        borderRadius: BorderRadius.circular(14),
+        onTap: () => _pick(from),
+        child: Padding(padding: const EdgeInsets.symmetric(vertical: 10),
+          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            MiuixText(label, fontSize: 12, color: c.onSurfaceVariantSummary),
+            const SizedBox(height: 6),
+            Row(children: [
+              Icon(Icons.calendar_today_rounded, size: 15, color: c.primary),
+              const SizedBox(width: 6),
+              Expanded(child: FittedBox(fit: BoxFit.scaleDown,
+                alignment: Alignment.centerLeft,
+                child: MiuixText(DateUtil.format(date), fontSize: 14,
+                  fontWeight: FontWeight.w600))),
+            ]),
+          ])),
+      ));
 
   Widget _chip(MiuixColors c, String label,
       {required bool active, required VoidCallback onTap}) {
@@ -254,13 +271,28 @@ class _FeeReportPageState extends State<FeeReportPage> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: <Widget>[
+          Row(children: [
+            Icon(Icons.insights_rounded, color: c.primary, size: 22),
+            const SizedBox(width: 8),
+            MiuixText('区间实收', fontSize: 14, color: c.onSurfaceSecondary),
+            const Spacer(),
+            MiuixText('$months 个账期', fontSize: 12,
+              color: c.onSurfaceVariantSummary),
+          ]),
+          const SizedBox(height: 14),
+          ReportAmount(_money(_totalPaid), fontSize: 36,
+            color: c.primary, bold: true),
+          const SizedBox(height: 16),
+          ClipRRect(borderRadius: BorderRadius.circular(6),
+            child: LinearProgressIndicator(
+              value: _totalDue <= 0 ? 0 : (_totalPaid / _totalDue).clamp(0, 1),
+              minHeight: 7, color: c.primary,
+              backgroundColor: c.primary.withValues(alpha: 0.10))),
+          const SizedBox(height: 18),
           Row(
             children: <Widget>[
               Expanded(
                 child: _sumCol(c, '应收', _money(_totalDue), c.onSurface),
-              ),
-              Expanded(
-                child: _sumCol(c, '实收', _money(_totalPaid), _kGreen),
               ),
               Expanded(
                 child: _sumCol(
@@ -274,7 +306,7 @@ class _FeeReportPageState extends State<FeeReportPage> {
           ),
           const SizedBox(height: 10),
           MiuixText(
-            '共 $months 个账期 · $_totalCount 笔流水 · 按账期（月份）口径统计',
+            '$_totalCount 笔流水 · 按账期月份统计，非实际到账日期',
             fontSize: 11.5,
             color: c.onSurfaceVariantSummary,
           ),
@@ -296,110 +328,25 @@ class _FeeReportPageState extends State<FeeReportPage> {
 
   /// 分类明细表：类型 | 应收 | 实收 | 欠费 + 总计行
   Widget _buildTable(MiuixColors c) {
-    return GlassCard(
+    return Column(children: [
+      for (final row in _rows) ...[
+        FeeCategoryCard(row: row),
+        const SizedBox(height: 12),
+      ],
+      GlassCard(
       borderRadius: 20,
-      padding: const EdgeInsets.fromLTRB(16, 12, 16, 6),
+      padding: const EdgeInsets.all(16),
       child: Column(
         children: <Widget>[
-          _tableRow(
-            c,
-            <String>['类型', '应收', '实收', '欠费'],
-            header: true,
-          ),
-          const SizedBox(height: 4),
-          for (int i = 0; i < _rows.length; i++) ...<Widget>[
-            if (i > 0) const MiuixHorizontalDivider(),
-            _tableRow(
-              c,
-              <String>[
-                '',
-                _money(_rows[i].due),
-                _money(_rows[i].paid),
-                _money(_rows[i].debt),
-              ],
-              type: _rows[i],
-            ),
-          ],
-          const MiuixHorizontalDivider(),
-          _tableRow(
-            c,
-            <String>['', _money(_totalDue), _money(_totalPaid),
-              _money(_totalDebt)],
-            bold: true,
-          ),
+          Row(children: [
+            const Expanded(child: MiuixText('实收合计', fontSize: 14,
+              fontWeight: FontWeight.w600)),
+            Expanded(child: ReportAmount(_money(_totalPaid), fontSize: 22,
+              color: _kGreen, bold: true, alignment: Alignment.centerRight)),
+          ]),
         ],
       ),
-    );
-  }
-
-  Widget _tableRow(
-    MiuixColors c,
-    List<String> cells, {
-    bool header = false,
-    bool bold = false,
-    FeeTypeSum? type,
-  }) {
-    final TextStyle? head = header
-        ? TextStyle(fontSize: 12, color: c.onSurfaceVariantSummary)
-        : null;
-    final Color debtColor = !header && !bold && _totalDebt > 0 && cells[3] != '¥0'
-        ? _kOrange
-        : (header || bold ? c.onSurface : c.onSurfaceSecondary);
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 9),
-      child: Row(
-        children: <Widget>[
-          Expanded(
-            flex: 3,
-            child: type == null
-                ? (header
-                    ? MiuixText(cells[0], style: head)
-                    : bold
-                        ? const MiuixText('合计',
-                            fontSize: 13.5,
-                            fontWeight: FontWeight.w700)
-                        : const SizedBox.shrink())
-                : Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: <Widget>[
-                      MiuixText(type.label,
-                          fontSize: 13.5,
-                          fontWeight: FontWeight.w600),
-                      MiuixText('${type.count} 笔 · ${type.rooms} 间',
-                          fontSize: 11,
-                          color: c.onSurfaceVariantSummary),
-                    ],
-                  ),
-          ),
-          Expanded(
-            flex: 2,
-            child: _num(cells[1],
-                header: header,
-                bold: bold,
-                color: header ? c.onSurfaceVariantSummary : c.onSurfaceSecondary),
-          ),
-          Expanded(
-            flex: 2,
-            child: _num(cells[2],
-                header: header,
-                bold: bold,
-                color: header
-                    ? c.onSurfaceVariantSummary
-                    : (bold ? _kGreen : c.onSurfaceSecondary)),
-          ),
-          Expanded(
-            flex: 2,
-            child: _num(cells[3], header: header, bold: bold, color: debtColor),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _num(String text,
-      {required bool header, required bool bold, required Color color}) {
-    return ReportAmount(text, fontSize: header ? 12 : (bold ? 14.5 : 13.5),
-        color: color, bold: bold, alignment: Alignment.centerRight);
+    )]);
   }
 
   /// 千分位金额
@@ -413,6 +360,59 @@ class _FeeReportPageState extends State<FeeReportPage> {
       buf.write(s[i]);
     }
     return v < 0 ? '-¥$buf' : '¥$buf';
+  }
+}
+
+class FeeCategoryCard extends StatelessWidget {
+  const FeeCategoryCard({super.key, required this.row});
+  final FeeTypeSum row;
+
+  @override
+  Widget build(BuildContext context) {
+    final c = MiuixTheme.of(context).colors;
+    final color = switch (row.payType) {
+      'water' => const Color(0xFF32A8DB),
+      'elec' => const Color(0xFFEBA13D),
+      _ => c.primary,
+    };
+    final icon = switch (row.payType) {
+      'rent' => Icons.home_rounded,
+      'water' => Icons.water_drop_rounded,
+      'elec' => Icons.bolt_rounded,
+      _ => Icons.water_rounded,
+    };
+    return GlassCard(borderRadius: 22, padding: const EdgeInsets.all(18),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Row(children: [
+          Container(padding: const EdgeInsets.all(10),
+            decoration: BoxDecoration(color: color.withValues(alpha: 0.12),
+              borderRadius: BorderRadius.circular(14)),
+            child: Icon(icon, color: color, size: 24)),
+          const SizedBox(width: 12),
+          Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              MiuixText(row.label, fontSize: 17, fontWeight: FontWeight.w700),
+              const SizedBox(height: 3),
+              MiuixText('${row.count} 笔流水 · ${row.rooms} 间房', fontSize: 12,
+                color: c.onSurfaceVariantSummary),
+            ])),
+        ]),
+        const SizedBox(height: 20),
+        Row(children: [
+          for (final item in [
+            ('应收', row.due, c.onSurface),
+            ('实收', row.paid, const Color(0xFF299C63)),
+            ('待收', row.debt, row.debt > 0 ? const Color(0xFFE69531) : c.onSurfaceVariantSummary),
+          ]) Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              MiuixText(item.$1, fontSize: 12, color: c.onSurfaceVariantSummary),
+              const SizedBox(height: 6),
+              Padding(padding: const EdgeInsets.only(right: 8),
+                child: ReportAmount(_FeeReportPageState._money(item.$2),
+                  fontSize: 18, color: item.$3, bold: true)),
+            ])),
+        ]),
+      ]));
   }
 }
 

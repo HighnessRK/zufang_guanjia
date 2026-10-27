@@ -34,7 +34,7 @@ class _FeishuSettingsPageState extends State<FeishuSettingsPage> {
           }
           await c.save();
           if (mounted) setState(() {});
-        }, obscureText: index == 3);
+        });
     } catch (e) {
       if (mounted) AppSnackbar.show(e is StateError ? e.message : '保存失败');
     }

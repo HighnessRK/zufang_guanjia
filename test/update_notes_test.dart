@@ -3,6 +3,11 @@ import 'package:zufang_guanjia/services/update_service.dart';
 
 /// 解析 Release 说明正文为条目列表 —— 覆盖 v1.1.4 乱码修复的各场景。
 void main() {
+  test('描述性新增标题和带后缀分组保留标签及字段下划线', () {
+    final notes = UpdateService.parseUpdateNotes('## 飞书多维表格同步\n- 使用 rental_key / rental_json\n## 修复问题\n- 输入框\n## 优化体验\n- 报表');
+    expect(notes.map((e) => e.type), ['新增', '修复', '优化']);
+    expect(notes.first.text, contains('rental_key / rental_json'));
+  });
   List<UpdateNoteEntry> parse(String s) => UpdateService.parseUpdateNotes(s);
 
   test('场景1：v1.1.4 之前的乱码（markdown 强调 + 全角引号 + 噪声行）', () {

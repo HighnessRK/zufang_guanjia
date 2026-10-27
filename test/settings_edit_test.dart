@@ -47,6 +47,15 @@ void main() {
       await tester.pump();
       expect(controller.text, continued);
       expect(controller.value.composing, TextRange.empty);
+      tester.testTextInput.updateEditingValue(const TextEditingValue(
+        text: '', selection: TextSelection.collapsed(offset: 0)));
+      await tester.pump();
+      tester.testTextInput.updateEditingValue(const TextEditingValue(
+        text: 'z', selection: TextSelection.collapsed(offset: 1),
+        composing: TextRange(start: 0, end: 1)));
+      await tester.pump();
+      expect(controller.text, 'z');
+      expect(controller.value.composing, TextRange.empty);
       expect(tester.takeException(), isNull);
       expect(saved, isNull, reason: '编辑过程不能提前保存配置');
       await tester.tap(find.text('取消'));
