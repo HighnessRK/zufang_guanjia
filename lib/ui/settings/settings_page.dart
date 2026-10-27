@@ -13,6 +13,7 @@ import 'llm_settings_page.dart';
 import 'mcp_settings_page.dart';
 import 'notify_settings_page.dart';
 import 'update_settings_page.dart';
+import 'feishu_settings_page.dart';
 
 /// 设置中心（一级页）：只保留模块入口与状态摘要，保持一屏可浏览；
 /// 每个模块的详细设置都在对应的二级页（自带返回按钮）。
@@ -98,6 +99,11 @@ class _SettingsPageState extends State<SettingsPage> {
                       title: '数据管理',
                       summary: '统计 · 备份 · 恢复',
                       onClick: () => _push(const DataSettingsPage()),
+                    ),
+                    MiuixArrowPreference(
+                      title: '飞书多维表格',
+                      summary: '云端数据 · 本地缓存 · 同步状态',
+                      onClick: () => _push(const FeishuSettingsPage()),
                     ),
                     const MiuixHorizontalDivider(),
                     MiuixArrowPreference(

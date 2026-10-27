@@ -160,6 +160,12 @@ class AppConfig extends ChangeNotifier {
   /// 收据自动水印文字；为空表示不显示水印。
   String receiptWatermark = '';
 
+  String feishuAppToken = '';
+  String feishuTableId = '';
+  String feishuClientId = '';
+  String feishuClientSecret = '';
+  bool feishuEnabled = false;
+
   /// 应用内更新：下载源 'gitee'（默认，国内快）/ 'github'
   String updateSource = 'gitee';
 
@@ -269,6 +275,11 @@ class AppConfig extends ChangeNotifier {
     llmModel = map['llm_model'] ?? '';
     llmVisionModel = map['llm_vision_model'] ?? '';
     receiptWatermark = map['receipt_watermark'] ?? '';
+    feishuAppToken = map['feishu_app_token'] ?? '';
+    feishuTableId = map['feishu_table_id'] ?? '';
+    feishuClientId = map['feishu_client_id'] ?? '';
+    feishuClientSecret = map['feishu_client_secret'] ?? '';
+    feishuEnabled = map['feishu_enabled'] == '1';
     updateSource = map['update_source'] == 'github' ? 'github' : 'gitee';
     autoCheckUpdate = map['auto_check_update'] != '0';
     updateNotify = map['update_notify'] != '0';
@@ -348,6 +359,11 @@ class AppConfig extends ChangeNotifier {
       ..writeln('llm_model=$llmModel')
       ..writeln('llm_vision_model=$llmVisionModel')
       ..writeln('receipt_watermark=$receiptWatermark')
+      ..writeln('feishu_app_token=$feishuAppToken')
+      ..writeln('feishu_table_id=$feishuTableId')
+      ..writeln('feishu_client_id=$feishuClientId')
+      ..writeln('feishu_client_secret=$feishuClientSecret')
+      ..writeln('feishu_enabled=${feishuEnabled ? 1 : 0}')
       ..writeln()
       ..writeln('#—— 应用更新 ———')
       ..writeln('# 下载源 gitee / github')

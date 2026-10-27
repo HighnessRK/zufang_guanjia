@@ -1677,6 +1677,7 @@ class AppTextField extends StatefulWidget {
     this.trailingIcon,
     this.autofocus = false,
     this.clearComposing = false,
+    this.obscureText = false,
     this.readOnly = false,
     this.belowBuilder,
   });
@@ -1700,6 +1701,7 @@ class AppTextField extends StatefulWidget {
   /// 置 true 时每次变更把 composing 归零，强制输入法以纯文本模式续写；
   /// 姓名这类要走中文拼音合成的输入框**不要**开启。
   final bool clearComposing;
+  final bool obscureText;
 
   /// 【v1.1.2】只读：聚焦不唤起输入法（配合 [AppLabelField.stepper] 计数器）
   final bool readOnly;
@@ -1778,6 +1780,7 @@ class _AppTextFieldState extends State<AppTextField> {
         mainAxisSize: MainAxisSize.min,
         children: <Widget>[
           MiuixTextField(
+            obscureText: widget.obscureText,
             // 聚焦瞬间传空 label → 内部判定 hidden → 灰色提示立即消失
             label: _focus ? '' : widget.label,
             controller: widget.controller,

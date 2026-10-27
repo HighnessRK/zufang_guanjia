@@ -289,8 +289,7 @@ class _FeeReportPageState extends State<FeeReportPage> {
       children: <Widget>[
         MiuixText(label, fontSize: 12, color: c.onSurfaceVariantSummary),
         const SizedBox(height: 4),
-        MiuixText(value, fontSize: 19, fontWeight: FontWeight.w700,
-            color: color),
+        ReportAmount(value, fontSize: 19, color: color, bold: true),
       ],
     );
   }
@@ -399,15 +398,8 @@ class _FeeReportPageState extends State<FeeReportPage> {
 
   Widget _num(String text,
       {required bool header, required bool bold, required Color color}) {
-    return Text(
-      text,
-      textAlign: TextAlign.right,
-      style: TextStyle(
-        fontSize: header ? 12 : (bold ? 14.5 : 13.5),
-        fontWeight: bold ? FontWeight.w700 : FontWeight.w500,
-        color: color,
-      ),
-    );
+    return ReportAmount(text, fontSize: header ? 12 : (bold ? 14.5 : 13.5),
+        color: color, bold: bold, alignment: Alignment.centerRight);
   }
 
   /// 千分位金额
@@ -422,4 +414,28 @@ class _FeeReportPageState extends State<FeeReportPage> {
     }
     return v < 0 ? '-¥$buf' : '¥$buf';
   }
+}
+
+/// Keep the complete amount on one line, including narrow screens / large fonts.
+/// Scale only when necessary rather than wrapping digits or hiding them.
+class ReportAmount extends StatelessWidget {
+  const ReportAmount(this.text, {super.key, required this.fontSize,
+    required this.color, this.bold = false, this.alignment = Alignment.centerLeft});
+  final String text;
+  final double fontSize;
+  final Color color;
+  final bool bold;
+  final Alignment alignment;
+
+  @override
+  Widget build(BuildContext context) => Align(
+    alignment: alignment,
+    child: FittedBox(
+      fit: BoxFit.scaleDown,
+      alignment: alignment,
+      child: Text(text, maxLines: 1, softWrap: false,
+        style: TextStyle(fontSize: fontSize,
+          fontWeight: bold ? FontWeight.w700 : FontWeight.w500, color: color)),
+    ),
+  );
 }

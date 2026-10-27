@@ -118,12 +118,12 @@ class LlmService {
     try {
       final HttpClientRequest request =
           await client.postUrl(uri).timeout(const Duration(seconds: 30));
-      request.headers.set('Content-Type', 'application/json');
+      request.headers.contentType = ContentType('application', 'json', charset: 'utf-8');
       request.headers.set('Authorization', 'Bearer ${cfg.llmApiKey}');
 
       final String imageB64 = base64Encode(imageBytes);
-      request.write(
-        jsonEncode(<String, Object?>{
+      request.add(
+        utf8.encode(jsonEncode(<String, Object?>{
           'model': cfg.llmVisionModel,
           'max_tokens': maxTokens,
           'temperature': 0,
@@ -141,7 +141,7 @@ class LlmService {
               ],
             },
           ],
-        }),
+        })),
       );
 
       final HttpClientResponse response =

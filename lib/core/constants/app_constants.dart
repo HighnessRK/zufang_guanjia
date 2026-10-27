@@ -5,14 +5,14 @@ class AppConstants {
 
   //========================= 应用信息 =========================
   static const String appName = '租房管家';
-  static const String appVersion = '1.1.6';
-  static const String appBuild = '14';
+  static const String appVersion = '1.2.0';
+  static const String appBuild = '15';
 
   /// ====== 应用内更新：Release 仓库（GitHub / Gitee 同名公开仓库）======
   static const String updateRepoName = 'zufang_guanjia';
   static const String updateRepoGitHubOwner = 'HighnessRK';
   static const String updateRepoGiteeOwner = 'HighnesssRK';
-  static const String appDesc = '纯本地离线 · 个人房东房源租户管理';
+  static const String appDesc = '离线缓存 · 可选飞书同步 · 个人房东管理';
 
   //========================= 数据库 ===========================
   /// SQLite 数据库文件名

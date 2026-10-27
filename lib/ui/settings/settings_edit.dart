@@ -73,8 +73,9 @@ Future<void> editTextDialog(
   String summary,
   String current,
   String hint,
-  Future<void> Function(String) onSave,
-) async {
+  Future<void> Function(String) onSave, {
+  bool obscureText = false,
+}) async {
   final TextEditingController ctrl = TextEditingController(text: current);
   final bool? ok = await showAppDialog(
     context,
@@ -83,6 +84,7 @@ Future<void> editTextDialog(
     content: AppTextField(
       label: hint,
       controller: ctrl,
+      obscureText: obscureText,
       // API 地址、密钥和模型 ID 都是标识符，不参与中文拼音合成。
       // 删除后结束输入法旧的 composing 区间，避免续打时恢复已删文字。
       clearComposing: true,

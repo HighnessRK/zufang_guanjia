@@ -31,6 +31,13 @@ class AppChangelog {
 
   /// 全部版本（倒序：最新在最前）
   static const List<ChangelogVersion> versions = <ChangelogVersion>[
+    ChangelogVersion('1.2.0', '2026-10-27', <ChangelogEntry>[
+      ChangelogEntry('新增', '飞书多维表格同步：本地缓存、自动续期、前台定时与变更后同步'),
+      ChangelogEntry('增强', '首次上传和下载前自动备份，双方修改冲突时停止覆盖'),
+      ChangelogEntry('新增', '飞书连接参数随配置备份分享，公开安装包不内置个人凭证'),
+      ChangelogEntry('修复', 'AI 识图请求使用 UTF-8 编码，修复中文提示词发送失败'),
+      ChangelogEntry('修复', '租金报表分类明细与汇总金额保持完整单行'),
+    ]),
     ChangelogVersion('1.1.6', '2026-10-27', <ChangelogEntry>[
       ChangelogEntry('新增', '收据支持自定义水印、房租收据及水费/电费分开开据'),
       ChangelogEntry('优化', '收据编号加入费用类型与流水号，账期显示完整起止日期'),

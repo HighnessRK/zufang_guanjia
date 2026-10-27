@@ -13,6 +13,7 @@ import 'services/mcp_tools.dart';
 import 'services/notification_service.dart';
 import 'services/native_bridge.dart';
 import 'ui/widgets/app_widgets.dart';
+import 'services/feishu_sync_service.dart';
 
 /// 程序入口。
 ///
@@ -76,4 +77,5 @@ Future<void> main() async {
   preloadTopBarVeilShader();
 
   runApp(const RentalApp());
+  FeishuSyncService.instance.start();
 }
