@@ -181,6 +181,40 @@ class _HomePageState extends State<HomePage> {
     final int pct = due > 0 ? (paid * 100 / due).round().clamp(0, 100) : 0;
     final int debt = s.monthDebt;
 
+    if (useStackedLayout(context)) {
+      return GlassCard(
+        padding: const EdgeInsets.all(20),
+        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          MiuixText('本期收款', fontSize: 13, color: c.onSurfaceVariantSummary),
+          const SizedBox(height: 4),
+          MiuixText(s.period,
+              fontSize: 16,
+              fontWeight: FontWeight.w600,
+              color: c.onSurfaceContainer),
+          const SizedBox(height: 18),
+          MiuixText('¥$paid',
+              fontSize: 30,
+              fontWeight: FontWeight.w800,
+              color: c.onSurfaceContainer),
+          const SizedBox(height: 4),
+          MiuixText('应收 ¥$due', fontSize: 13, color: c.onSurfaceVariantSummary),
+          const SizedBox(height: 16),
+          ClipRRect(
+              borderRadius: BorderRadius.circular(4),
+              child: LinearProgressIndicator(
+                  value: pct / 100,
+                  minHeight: 6,
+                  color: c.primary,
+                  backgroundColor: c.primary.withValues(alpha: 0.10))),
+          const SizedBox(height: 12),
+          MiuixText(debt > 0 ? '待收 ¥$debt' : '本期已全部收齐',
+              fontSize: 13,
+              fontWeight: FontWeight.w600,
+              color: debt > 0 ? c.error : const Color(0xFF34C759)),
+        ]),
+      );
+    }
+
     return GlassCard(
       padding: const EdgeInsets.all(20),
       child: Column(
@@ -236,8 +270,10 @@ class _HomePageState extends State<HomePage> {
             ],
           ),
           const SizedBox(height: 18),
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.end,
+          Wrap(
+            spacing: 8,
+            runSpacing: 4,
+            crossAxisAlignment: WrapCrossAlignment.end,
             children: <Widget>[
               MiuixText(
                 '¥$paid',
@@ -245,7 +281,6 @@ class _HomePageState extends State<HomePage> {
                 fontWeight: FontWeight.w800,
                 color: c.onSurfaceContainer,
               ),
-              const SizedBox(width: 8),
               Padding(
                 padding: const EdgeInsets.only(bottom: 5),
                 child: MiuixText(
@@ -289,7 +324,9 @@ class _HomePageState extends State<HomePage> {
             ),
           ),
           const SizedBox(height: 12),
-          Row(
+          Wrap(
+            spacing: 12,
+            runSpacing: 8,
             children: <Widget>[
               MiuixText(
                 debt > 0 ? '未收 ¥$debt' : '本期已全部收齐',
@@ -297,7 +334,6 @@ class _HomePageState extends State<HomePage> {
                 fontWeight: FontWeight.w600,
                 color: debt > 0 ? c.error : const Color(0xFF34C759),
               ),
-              const Spacer(),
               MiuixText(
                 '共 ${s.totalRooms} 间 · 在租 ${s.occupiedRooms} 间',
                 fontSize: 12,
@@ -313,6 +349,34 @@ class _HomePageState extends State<HomePage> {
   /// 统计小卡（玻璃）：房间总数 / 在租空置
   Widget _buildStatRow(MiuixColors c) {
     final HomeStat s = _stat!;
+    if (useStackedLayout(context)) {
+      Widget tile(String value, String label, Color color) => Expanded(
+              child: GlassCard(
+            padding: const EdgeInsets.all(16),
+            onPressed: _openRooms,
+            child:
+                Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Container(
+                  width: 24,
+                  height: 4,
+                  decoration: BoxDecoration(
+                      color: color, borderRadius: BorderRadius.circular(2))),
+              const SizedBox(height: 12),
+              MiuixText(value,
+                  fontSize: 20,
+                  fontWeight: FontWeight.w700,
+                  color: c.onSurfaceContainer),
+              const SizedBox(height: 6),
+              MiuixText(label, fontSize: 11, color: c.onSurfaceVariantSummary),
+            ]),
+          ));
+      return Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        tile('${s.totalRooms}', '房间总数', const Color(0xFF3482FF)),
+        const SizedBox(width: 12),
+        tile('${s.occupiedRooms}', '在租 · 空置 ${s.emptyRooms}',
+            const Color(0xFF34C759)),
+      ]);
+    }
     return Row(
       children: <Widget>[
         Expanded(
@@ -503,9 +567,6 @@ class _HomePageState extends State<HomePage> {
       ),
       title: item.title,
       summary: item.body,
-      endActions: <Widget>[
-        StatusTag(item.typeText, color: color),
-      ],
     );
   }
 
@@ -647,8 +708,7 @@ class _HomePageState extends State<HomePage> {
   void _openAddRoom() {
     Navigator.of(context)
         .push(
-          AppPageRoute<void>(
-              builder: (BuildContext _) => const RoomEditPage()),
+          AppPageRoute<void>(builder: (BuildContext _) => const RoomEditPage()),
         )
         .then((_) => _load());
   }

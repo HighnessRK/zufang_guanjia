@@ -5,6 +5,7 @@ import '../../core/config/app_config.dart';
 import '../../services/llm_models_service.dart';
 import '../widgets/app_widgets.dart';
 import 'settings_edit.dart';
+import 'ocr_settings_panel.dart';
 
 /// 设置 · 大模型识别 API：电表拍照（单房间 / 整层批量）识别用。
 class LlmSettingsPage extends StatefulWidget {
@@ -82,6 +83,8 @@ class _LlmSettingsPageState extends State<LlmSettingsPage> {
           padding: EdgeInsets.fromLTRB(
               20, padding.top + 8, 20, kGlassNavClearance + padding.bottom),
           children: <Widget>[
+            const OcrSettingsPanel(),
+            const SizedBox(height: 16),
             const SectionTitle('接口配置'),
             GlassCard(
               padding: const EdgeInsets.symmetric(vertical: 4),

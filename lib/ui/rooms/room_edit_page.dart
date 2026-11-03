@@ -56,7 +56,8 @@ class _RoomEditPageState extends State<RoomEditPage> {
   bool _saving = false;
 
   /// 房租缴费周期（与「设置 · 计费参数」同口径：1/3/6/12 个月）
-  int get _cycle => AppConfig.instance.rentCycle <= 0 ? 1 : AppConfig.instance.rentCycle;
+  int get _cycle =>
+      AppConfig.instance.rentCycle <= 0 ? 1 : AppConfig.instance.rentCycle;
 
   /// 租金输入框单位后缀：元/月、元/季、元/半年、元/年
   String get _cycleUnit => '元/${AppConfig.cycleUnit(_cycle)}';
@@ -66,8 +67,7 @@ class _RoomEditPageState extends State<RoomEditPage> {
   /// 【v1.1.1 修复】改为**小数**：年付填 7600 时 7600 ÷ 12 = 633.333…，
   /// 此前用 `~/` 取整成 633，账期引擎按 633 × 12 = 7596 出应收，凭空少
   /// 4 元。保留小数后应收在 [PaymentRepository] 处四舍五入回 7600。
-  double get _monthlyRent =>
-      (double.tryParse(_rent.text.trim()) ?? 0) / _cycle;
+  double get _monthlyRent => (double.tryParse(_rent.text.trim()) ?? 0) / _cycle;
 
   /// 楼层下拉可选项：1 ~ 20 层（超出可用「自定义」手输，如「一楼」「店面」）
   static const int _maxFloorOption = 20;
@@ -107,9 +107,7 @@ class _RoomEditPageState extends State<RoomEditPage> {
         Padding(
           padding: const EdgeInsets.only(top: 4),
           child: MiuixText(
-            empty
-                ? '选填；在租户卡片上可一键拨打'
-                : (ok ? '✓ 11 位号码正确' : '⚠ 号码应为 11 位、1 开头'),
+            empty ? '选填；在租户卡片上可一键拨打' : (ok ? '✓ 11 位号码正确' : '⚠ 号码应为 11 位、1 开头'),
             fontSize: 11,
             color: (empty || ok) ? c.onSurfaceVariantSummary : c.error,
           ),
@@ -428,8 +426,7 @@ class _RoomEditPageState extends State<RoomEditPage> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: <Widget>[
-                    _feeLine(
-                        '水费 · ${AppConfig.cycleLabel(cfg.waterCycle)}结算',
+                    _feeLine('水费 · ${AppConfig.cycleLabel(cfg.waterCycle)}结算',
                         _waterFee),
                     const SizedBox(height: 6),
                     _feeLine('电费 · ${cfg.elecCycleLabel}', _elecFee),
@@ -447,8 +444,7 @@ class _RoomEditPageState extends State<RoomEditPage> {
                           child: GradientButton(
                             label: '收水费',
                             enabled: _waterFee > 0 && !_saving,
-                            onPressed: () =>
-                                _settle(AppConstants.payTypeWater),
+                            onPressed: () => _settle(AppConstants.payTypeWater),
                           ),
                         ),
                         const SizedBox(width: 12),
@@ -456,8 +452,7 @@ class _RoomEditPageState extends State<RoomEditPage> {
                           child: GradientButton(
                             label: '收电费',
                             enabled: _elecFee > 0 && !_saving,
-                            onPressed: () =>
-                                _settle(AppConstants.payTypeElec),
+                            onPressed: () => _settle(AppConstants.payTypeElec),
                           ),
                         ),
                       ],
@@ -492,11 +487,20 @@ class _RoomEditPageState extends State<RoomEditPage> {
   /// 水收费结算区的一行：费用类型 + 周期说明 | 周期累计金额
   Widget _feeLine(String label, int fee) {
     final MiuixColors c = MiuixTheme.of(context).colors;
+    if (useStackedLayout(context)) {
+      return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        MiuixText(label, fontSize: 13, color: c.onSurfaceVariantSummary),
+        const SizedBox(height: 4),
+        MiuixText('累计 ¥$fee',
+            fontSize: 17,
+            fontWeight: FontWeight.w700,
+            color: fee > 0 ? c.primary : c.onSurfaceVariantSummary),
+      ]);
+    }
     return Row(
       children: <Widget>[
         Expanded(
-          child: MiuixText(label,
-              fontSize: 14, fontWeight: FontWeight.w600),
+          child: MiuixText(label, fontSize: 14, fontWeight: FontWeight.w600),
         ),
         MiuixText(
           '累计 ¥$fee',
@@ -636,14 +640,20 @@ class _DateField extends StatelessWidget {
       controller: controller,
       keyboardType: TextInputType.datetime,
       labelWidth: _kFieldLabelWidth,
-      trailingIcon: MiuixIconButton(
-        onPressed: () => _pick(context),
-        child: MiuixIcon(
-          icon: Icons.calendar_month_rounded,
-          size: 20,
-          tint: c.onSurfaceVariantSummary,
-        ),
-      ),
+      trailingIcon: Semantics(
+          button: true,
+          label: '选择$label',
+          child: GestureDetector(
+              behavior: HitTestBehavior.opaque,
+              onTap: () => _pick(context),
+              child: Padding(
+                padding: const EdgeInsets.all(14),
+                child: MiuixIcon(
+                  icon: Icons.calendar_month_rounded,
+                  size: 20,
+                  tint: c.onSurfaceVariantSummary,
+                ),
+              ))),
     );
   }
 
@@ -712,16 +722,20 @@ class _RoomTypeFieldState extends State<_RoomTypeField> {
   @override
   Widget build(BuildContext context) {
     final MiuixColors c = MiuixTheme.of(context).colors;
+    final stacked = useStackedLayout(context);
     // 标签在框外左侧（与 AppLabelField 同布局），框内仅值 + 下拉箭头
     return Padding(
       padding: const EdgeInsets.only(bottom: 12),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.center,
+      child: Flex(
+        direction: stacked ? Axis.vertical : Axis.horizontal,
+        crossAxisAlignment:
+            stacked ? CrossAxisAlignment.start : CrossAxisAlignment.center,
         children: <Widget>[
           Padding(
-            padding: const EdgeInsets.only(right: 10),
+            padding: EdgeInsets.only(
+                right: stacked ? 0 : 10, bottom: stacked ? 8 : 0),
             child: SizedBox(
-              width: widget.labelWidth,
+              width: stacked ? null : widget.labelWidth,
               child: MiuixText(
                 '房型',
                 fontSize: 14,
@@ -730,10 +744,13 @@ class _RoomTypeFieldState extends State<_RoomTypeField> {
               ),
             ),
           ),
-          Expanded(
+          Flexible(
+            flex: stacked ? 0 : 1,
+            fit: stacked ? FlexFit.loose : FlexFit.tight,
             child: Stack(
               children: <Widget>[
-                MiuixTextField(
+                ExcludeSemantics(
+                    child: MiuixTextField(
                   // 空值时以占位提示「点击选择」，有值后自动让位
                   label: controller.text.isEmpty ? '点击选择' : '',
                   useLabelAsPlaceholder: true,
@@ -745,13 +762,17 @@ class _RoomTypeFieldState extends State<_RoomTypeField> {
                     size: 28,
                     tint: c.onSurfaceVariantSummary,
                   ),
-                ),
+                )),
                 // 整框可点：弹出预设选项
                 Positioned.fill(
-                  child: GestureDetector(
-                    behavior: HitTestBehavior.translucent,
-                    onTap: () => _pick(context),
-                  ),
+                  child: Semantics(
+                      button: true,
+                      label: '选择房型',
+                      value: controller.text.isEmpty ? '未选择' : controller.text,
+                      child: GestureDetector(
+                        behavior: HitTestBehavior.translucent,
+                        onTap: () => _pick(context),
+                      )),
                 ),
               ],
             ),
@@ -838,18 +859,22 @@ class _FloorFieldState extends State<_FloorField> {
   Widget build(BuildContext context) {
     final MiuixColors c = MiuixTheme.of(context).colors;
     final String v = controller.text.trim();
+    final stacked = useStackedLayout(context);
     // 数字楼层补「层」显示，自定义值（一楼 / 店面）原样显示
     final String shown =
         v.isEmpty ? '' : (int.tryParse(v) != null ? '$v 层' : v);
     return Padding(
       padding: const EdgeInsets.only(bottom: 12),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.center,
+      child: Flex(
+        direction: stacked ? Axis.vertical : Axis.horizontal,
+        crossAxisAlignment:
+            stacked ? CrossAxisAlignment.start : CrossAxisAlignment.center,
         children: <Widget>[
           Padding(
-            padding: const EdgeInsets.only(right: 10),
+            padding: EdgeInsets.only(
+                right: stacked ? 0 : 10, bottom: stacked ? 8 : 0),
             child: SizedBox(
-              width: widget.labelWidth,
+              width: stacked ? null : widget.labelWidth,
               child: MiuixText(
                 '楼层',
                 fontSize: 14,
@@ -858,10 +883,13 @@ class _FloorFieldState extends State<_FloorField> {
               ),
             ),
           ),
-          Expanded(
+          Flexible(
+            flex: stacked ? 0 : 1,
+            fit: stacked ? FlexFit.loose : FlexFit.tight,
             child: Stack(
               children: <Widget>[
-                MiuixTextField(
+                ExcludeSemantics(
+                    child: MiuixTextField(
                   // 空值时以占位提示「按房号推导」，有值后显示楼层
                   label: shown.isEmpty ? '按房号推导' : '',
                   useLabelAsPlaceholder: true,
@@ -873,13 +901,17 @@ class _FloorFieldState extends State<_FloorField> {
                     size: 28,
                     tint: c.onSurfaceVariantSummary,
                   ),
-                ),
+                )),
                 // readOnly 输入框收不到点击，整框补一层手势
                 Positioned.fill(
-                  child: GestureDetector(
-                    behavior: HitTestBehavior.translucent,
-                    onTap: () => _pick(context),
-                  ),
+                  child: Semantics(
+                      button: true,
+                      label: '选择楼层',
+                      value: shown.isEmpty ? '按房号推导' : shown,
+                      child: GestureDetector(
+                        behavior: HitTestBehavior.translucent,
+                        onTap: () => _pick(context),
+                      )),
                 ),
               ],
             ),
@@ -895,8 +927,7 @@ class _FloorFieldState extends State<_FloorField> {
       const MapEntry<String, String>('', '按房号推导'),
       for (int i = 1; i <= _RoomEditPageState._maxFloorOption; i++)
         MapEntry<String, String>('$i', '$i 层'),
-      if (current.isNotEmpty &&
-          int.tryParse(current) == null) // 自定义值也给一个勾选项
+      if (current.isNotEmpty && int.tryParse(current) == null) // 自定义值也给一个勾选项
         MapEntry<String, String>(current, current),
       const MapEntry<String, String>(_FloorField.kCustom, _FloorField.kCustom),
     ];

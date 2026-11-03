@@ -130,10 +130,12 @@ class _RoomDetailPageState extends State<RoomDetailPage> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: <Widget>[
-          Row(
+          Wrap(
+            spacing: 16,
+            runSpacing: 8,
+            crossAxisAlignment: WrapCrossAlignment.center,
             children: <Widget>[
               MiuixText(room.roomNo, fontSize: 24, fontWeight: FontWeight.w700),
-              const Spacer(),
               StatusTag(
                 room.isOccupied ? '在租中' : '空置',
                 color: room.isOccupied
@@ -205,11 +207,13 @@ class _RoomDetailPageState extends State<RoomDetailPage> {
         children: <Widget>[
           Padding(
             padding: const EdgeInsets.fromLTRB(18, 14, 18, 6),
-            child: Row(
+            child: Wrap(
+              spacing: 16,
+              runSpacing: 10,
+              crossAxisAlignment: WrapCrossAlignment.center,
               children: <Widget>[
                 const MiuixText('租户信息',
                     fontSize: 16, fontWeight: FontWeight.w700),
-                const Spacer(),
                 GradientButton(
                   label: '添加',
                   icon: Icons.person_add_alt_1_rounded,
@@ -377,9 +381,7 @@ class _RoomDetailPageState extends State<RoomDetailPage> {
                   fontSize: 16, fontWeight: FontWeight.w700),
               const Spacer(),
               StatusTag(
-                dueNow
-                    ? '待收 ¥$owed'
-                    : (accumulating ? '累计中' : '已结清'),
+                dueNow ? '待收 ¥$owed' : (accumulating ? '累计中' : '已结清'),
                 color: dueNow
                     ? const Color(0xFFFF9500)
                     : (accumulating
@@ -443,14 +445,10 @@ class _RoomDetailPageState extends State<RoomDetailPage> {
       content: Column(
         mainAxisSize: MainAxisSize.min,
         children: <Widget>[
-          AppLabelField(
-              label: '上期电表', controller: elecPrev, labelWidth: 76),
-          AppLabelField(
-              label: '本期电表', controller: elecCurr, labelWidth: 76),
-          AppLabelField(
-              label: '上期水表', controller: waterPrev, labelWidth: 76),
-          AppLabelField(
-              label: '本期水表', controller: waterCurr, labelWidth: 76),
+          AppLabelField(label: '上期电表', controller: elecPrev, labelWidth: 76),
+          AppLabelField(label: '本期电表', controller: elecCurr, labelWidth: 76),
+          AppLabelField(label: '上期水表', controller: waterPrev, labelWidth: 76),
+          AppLabelField(label: '本期水表', controller: waterCurr, labelWidth: 76),
           _MeterFeePreview(
             room: room,
             elecPrev: elecPrev,
@@ -696,8 +694,7 @@ class _RoomDetailPageState extends State<RoomDetailPage> {
           isPrimary: isPrimary));
       if (isPrimary) {
         // 同房间其它租户取消主标记 + rooms.tenant 镜像
-        await PersonRepository.instance
-            .applyPrimary(id, widget.roomNo, true);
+        await PersonRepository.instance.applyPrimary(id, widget.roomNo, true);
       }
     } else {
       final bool wasPrimary = person.isPrimary;

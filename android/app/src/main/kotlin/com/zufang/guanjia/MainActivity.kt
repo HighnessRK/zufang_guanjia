@@ -97,6 +97,9 @@ class MainActivity : FlutterActivity() {
                     map["brand"] = Build.BRAND ?: ""
                     map["androidVersion"] = Build.VERSION.RELEASE ?: ""
                     map["sdkInt"] = Build.VERSION.SDK_INT
+                    map["socModel"] = if (Build.VERSION.SDK_INT >= 31) Build.SOC_MODEL else ""
+                    map["hardware"] = Build.HARDWARE ?: ""
+                    map["board"] = Build.BOARD ?: ""
                     map["isXiaomi"] = FocusNotificationHelper.isXiaomiDevice()
                     result.success(map)
                 }

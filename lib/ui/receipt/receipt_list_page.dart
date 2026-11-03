@@ -81,9 +81,13 @@ class _ReceiptListPageState extends State<ReceiptListPage> {
     );
     if (roomNo == null || !mounted) return;
     final String? kind = await showOptionPicker<String>(context,
-        title: '收据类型', current: 'utility', options: const [
-          MapEntry('utility', '水电费收据'), MapEntry('rent', '房租收据'),
-          MapEntry('water', '仅水费收据'), MapEntry('elec', '仅电费收据'),
+        title: '收据类型',
+        current: 'utility',
+        options: const [
+          MapEntry('utility', '水电费收据'),
+          MapEntry('rent', '房租收据'),
+          MapEntry('water', '仅水费收据'),
+          MapEntry('elec', '仅电费收据'),
         ]);
     if (kind == null || !mounted) return;
 
@@ -103,13 +107,19 @@ class _ReceiptListPageState extends State<ReceiptListPage> {
     if (period == null || !mounted) return;
     final parts = period.split('-');
     final month = DateTime(int.parse(parts[0]), int.parse(parts[1]), 1);
-    final start = await showDatePickDialog(context, title: '账期开始日期',
-        initialDate: month, firstDate: DateTime(2000), lastDate: DateTime(2100));
+    final start = await showDatePickDialog(context,
+        title: '账期开始日期',
+        initialDate: month,
+        firstDate: DateTime(2000),
+        lastDate: DateTime(2100));
     if (start == null || !mounted) return;
-    final end = await showDatePickDialog(context, title: '账期结束日期',
+    final end = await showDatePickDialog(context,
+        title: '账期结束日期',
         initialDate: DateTime(month.year, month.month + 1, 0).isBefore(start)
-            ? start : DateTime(month.year, month.month + 1, 0),
-        firstDate: start, lastDate: DateTime(2100));
+            ? start
+            : DateTime(month.year, month.month + 1, 0),
+        firstDate: start,
+        lastDate: DateTime(2100));
     if (end == null || !mounted) return;
 
     try {
@@ -182,13 +192,18 @@ class _ReceiptListPageState extends State<ReceiptListPage> {
               TextButton.icon(
                 icon: const Icon(Icons.branding_watermark_rounded),
                 label: Text(AppConfig.instance.receiptWatermark.isEmpty
-                    ? '设置自定义水印（以后自动应用）' : '水印：${AppConfig.instance.receiptWatermark}'),
-                onPressed: () => editTextDialog(context, '收据水印',
+                    ? '设置自定义水印（以后自动应用）'
+                    : '水印：${AppConfig.instance.receiptWatermark}'),
+                onPressed: () => editTextDialog(
+                    context,
+                    '收据水印',
                     '设置后以后生成的收据自动添加；留空关闭水印',
-                    AppConfig.instance.receiptWatermark, '水印文字', (value) async {
-                      await AppConfig.instance.update(receiptWatermark: value.replaceAll('\n', ' '));
-                      if (mounted) setState(() {});
-                    }),
+                    AppConfig.instance.receiptWatermark,
+                    '水印文字', (value) async {
+                  await AppConfig.instance
+                      .update(receiptWatermark: value.replaceAll('\n', ' '));
+                  if (mounted) setState(() {});
+                }),
               ),
               if (_list.isEmpty)
                 const EmptyView(
@@ -210,6 +225,36 @@ class _ReceiptListPageState extends State<ReceiptListPage> {
   }
 
   Widget _receiptCard(MiuixColors c, Receipt r) {
+    if (useStackedLayout(context) || r.total.abs() >= 100000) {
+      return GlassCard(
+        padding: const EdgeInsets.all(18),
+        borderRadius: 20,
+        onPressed: () => _open(r),
+        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          MiuixText(r.title, fontSize: 16, fontWeight: FontWeight.w600),
+          const SizedBox(height: 8),
+          MiuixText('${r.roomNo} · ${r.tenant.isEmpty ? '未填写租户' : r.tenant}',
+              fontSize: 13, color: c.onSurfaceVariantSummary),
+          const SizedBox(height: 4),
+          MiuixText(r.no, fontSize: 11.5, color: c.onSurfaceVariantSummary),
+          const SizedBox(height: 4),
+          MiuixText('生成于 ${r.createdAt}',
+              fontSize: 11, color: c.onSurfaceVariantSummary),
+          const SizedBox(height: 12),
+          Row(children: [
+            Expanded(
+                child: MiuixText('¥${r.total}',
+                    fontSize: 21,
+                    fontWeight: FontWeight.w700,
+                    color: c.primary)),
+            MiuixIconButton(
+                onPressed: () => _delete(r),
+                child: MiuixIcon(
+                    icon: Icons.delete_outline_rounded, tint: c.error)),
+          ]),
+        ]),
+      );
+    }
     return GlassCard(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
       borderRadius: 20,
@@ -227,8 +272,7 @@ class _ReceiptListPageState extends State<ReceiptListPage> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: <Widget>[
-                MiuixText(r.title,
-                    fontSize: 14.5, fontWeight: FontWeight.w600),
+                MiuixText(r.title, fontSize: 14.5, fontWeight: FontWeight.w600),
                 const SizedBox(height: 3),
                 MiuixText(
                   r.tenant.isEmpty ? r.no : '${r.no} · 租户 ${r.tenant}',
@@ -245,9 +289,7 @@ class _ReceiptListPageState extends State<ReceiptListPage> {
             crossAxisAlignment: CrossAxisAlignment.end,
             children: <Widget>[
               MiuixText('¥${r.total}',
-                  fontSize: 16,
-                  fontWeight: FontWeight.w700,
-                  color: c.primary),
+                  fontSize: 16, fontWeight: FontWeight.w700, color: c.primary),
               const SizedBox(height: 6),
               GestureDetector(
                 onTap: () => _delete(r),

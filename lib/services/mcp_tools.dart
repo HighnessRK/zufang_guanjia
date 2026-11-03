@@ -769,6 +769,9 @@ class McpTools {
         for (final Room r in rooms) {
           if (r.isOccupied) {
             occupied++;
+          }
+          if (AppConfig.instance.isExcludedRoom(r.roomNo)) continue;
+          if (r.isOccupied) {
             rentSum += r.rent.round();
             paidSum += r.paid;
           }

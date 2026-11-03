@@ -67,18 +67,17 @@ class _ChangelogSectionState extends State<ChangelogSection> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: <Widget>[
-          Row(
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            crossAxisAlignment: WrapCrossAlignment.center,
             children: <Widget>[
               MiuixText('V${v.version}',
                   fontSize: 17, fontWeight: FontWeight.w700),
               if (current) ...<Widget>[
-                const SizedBox(width: 8),
                 StatusTag('当前版本', color: c.primary),
               ],
-              const Spacer(),
-              MiuixText(v.date,
-                  fontSize: 12, color: c.onSurfaceVariantSummary),
-              const SizedBox(width: 6),
+              MiuixText(v.date, fontSize: 12, color: c.onSurfaceVariantSummary),
               // 展开箭头：展开时旋转 180°
               AnimatedRotation(
                 turns: open ? 0.5 : 0,
@@ -124,8 +123,8 @@ class _ChangelogSectionState extends State<ChangelogSection> {
                                   padding: const EdgeInsets.symmetric(
                                       horizontal: 7, vertical: 3),
                                   decoration: BoxDecoration(
-                                    color: Color(
-                                            AppChangelog.colorOf(v.entries[j].type))
+                                    color: Color(AppChangelog.colorOf(
+                                            v.entries[j].type))
                                         .withValues(alpha: 0.12),
                                     borderRadius: BorderRadius.circular(8),
                                   ),

@@ -625,6 +625,7 @@ class PaymentRepository {
     final List<Payment> list = await byPeriod(p);
     int due = 0, paid = 0, settled = 0, unsettled = 0;
     for (final Payment item in list) {
+      if (AppConfig.instance.isExcludedRoom(item.roomNo)) continue;
       due += item.due;
       paid += item.paid;
       if (item.isSettled) {
@@ -662,13 +663,16 @@ class PaymentRepository {
     final String a = from.compareTo(to) <= 0 ? from : to;
     final String b = from.compareTo(to) <= 0 ? to : from;
     final db = await DatabaseHelper.instance.database;
+    final excluded = AppConfig.instance.excludedRooms.toList();
+    final filter = excluded.isEmpty ? '' :
+        ' AND room_no NOT IN (${List.filled(excluded.length, '?').join(',')})';
     final List<Map<String, Object?>> rows = await db.rawQuery(
       'SELECT pay_type, SUM(due) AS due, SUM(paid) AS paid, '
       'COUNT(*) AS n, COUNT(DISTINCT room_no) AS rooms '
       'FROM ${AppConstants.tablePayments} '
-      'WHERE period >= ? AND period <= ? '
+      'WHERE period >= ? AND period <= ? $filter '
       'GROUP BY pay_type ORDER BY pay_type',
-      <Object?>[a, b],
+      <Object?>[a, b, ...excluded],
     );
     return rows.map((Map<String, Object?> r) {
       final Object? due = r['due'], paid = r['paid'];

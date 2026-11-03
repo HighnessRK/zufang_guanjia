@@ -1,6 +1,7 @@
 import 'package:sqflite/sqflite.dart';
 
 import '../../core/constants/app_constants.dart';
+import '../../core/config/app_config.dart';
 import '../db/database_helper.dart';
 import '../models/room.dart';
 
@@ -74,8 +75,8 @@ class RoomRepository {
   /// 统计：房间总数
   Future<int> countAll() async {
     final db = await DatabaseHelper.instance.database;
-    final List<Map<String, Object?>> r =
-        await db.rawQuery('SELECT COUNT(*) AS c FROM ${AppConstants.tableRooms}');
+    final List<Map<String, Object?>> r = await db
+        .rawQuery('SELECT COUNT(*) AS c FROM ${AppConstants.tableRooms}');
     return (r.first['c'] as int?) ?? 0;
   }
 
@@ -88,27 +89,37 @@ class RoomRepository {
   }
 
   /// 统计：全部房间月租金合计
+  String _excludeFilter(List<String> excluded) => excluded.isEmpty
+      ? ''
+      : ' AND room_no NOT IN (${List.filled(excluded.length, '?').join(',')})';
+
   Future<int> sumRent() async {
     final db = await DatabaseHelper.instance.database;
+    final excluded = AppConfig.instance.excludedRooms.toList();
     final List<Map<String, Object?>> r = await db.rawQuery(
-        'SELECT IFNULL(SUM(rent),0) AS s FROM ${AppConstants.tableRooms} WHERE tenant <> \'\'');
-    return (r.first['s'] as int?) ?? 0;
+        'SELECT IFNULL(SUM(rent),0) AS s FROM ${AppConstants.tableRooms} WHERE tenant <> \'\'${_excludeFilter(excluded)}',
+        excluded);
+    return (r.first['s'] as num?)?.round() ?? 0;
   }
 
   /// 统计：本月实收房租合计
   Future<int> sumPaid() async {
     final db = await DatabaseHelper.instance.database;
+    final excluded = AppConfig.instance.excludedRooms.toList();
     final List<Map<String, Object?>> r = await db.rawQuery(
-        'SELECT IFNULL(SUM(paid),0) AS s FROM ${AppConstants.tableRooms} WHERE tenant <> \'\'');
+        'SELECT IFNULL(SUM(paid),0) AS s FROM ${AppConstants.tableRooms} WHERE tenant <> \'\'${_excludeFilter(excluded)}',
+        excluded);
     return (r.first['s'] as int?) ?? 0;
   }
 
   /// 统计：本月未收水电费合计
   Future<int> sumUnpaidUtility() async {
     final db = await DatabaseHelper.instance.database;
+    final excluded = AppConfig.instance.excludedRooms.toList();
     final List<Map<String, Object?>> r = await db.rawQuery(
         'SELECT IFNULL(SUM(utility_fee),0) AS s FROM ${AppConstants.tableRooms} '
-        'WHERE utility_paid = 0 AND utility_fee > 0');
+        'WHERE utility_paid = 0 AND utility_fee > 0${_excludeFilter(excluded)}',
+        excluded);
     return (r.first['s'] as int?) ?? 0;
   }
 

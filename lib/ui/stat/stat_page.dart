@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_miuix/miuix.dart';
 
 import '../../core/utils/date_util.dart';
+import '../../core/config/app_config.dart';
 import '../../data/models/room.dart';
 import '../../data/repository/payment_repository.dart';
 import '../../data/repository/room_repository.dart';
@@ -56,6 +57,8 @@ class _StatPageState extends State<StatPage> {
         await PaymentRepository.instance.unsettledRentByRoom();
     final Map<String, int> utilOwed =
         await PaymentRepository.instance.unsettledUtilityByRoom();
+    rentOwed.removeWhere((room, _) => AppConfig.instance.isExcludedRoom(room));
+    utilOwed.removeWhere((room, _) => AppConfig.instance.isExcludedRoom(room));
     if (!mounted) return;
     setState(() {
       _monthly = monthly;
@@ -148,18 +151,35 @@ class _StatPageState extends State<StatPage> {
             ),
           ),
           for (int i = 0; i < _monthly.length; i++) ...<Widget>[
-            MiuixBasicComponent(
-              title: _monthly[i].period,
-              summary:
-                  '应收 ¥${_monthly[i].due} · 实收 ¥${_monthly[i].paid} · 欠 ¥${_monthly[i].debt}',
-              endActions: <Widget>[
-                StatusTag(
-                  _monthly[i].debt == 0 ? '已结清' : '有欠费',
-                  color:
-                      _monthly[i].debt == 0 ? const Color(0xFF34C759) : c.error,
-                ),
-              ],
-            ),
+            if (useStackedLayout(context))
+              Padding(
+                padding: const EdgeInsets.all(18),
+                child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      MiuixText(_monthly[i].period,
+                          fontSize: 16, fontWeight: FontWeight.w700),
+                      const SizedBox(height: 10),
+                      InfoRow('应收', '¥${_monthly[i].due}'),
+                      InfoRow('实收', '¥${_monthly[i].paid}'),
+                      InfoRow('未收', '¥${_monthly[i].debt}',
+                          highlight: _monthly[i].debt > 0),
+                    ]),
+              )
+            else
+              MiuixBasicComponent(
+                title: _monthly[i].period,
+                summary:
+                    '应收 ¥${_monthly[i].due} · 实收 ¥${_monthly[i].paid} · 欠 ¥${_monthly[i].debt}',
+                endActions: <Widget>[
+                  StatusTag(
+                    _monthly[i].debt == 0 ? '已结清' : '有欠费',
+                    color: _monthly[i].debt == 0
+                        ? const Color(0xFF34C759)
+                        : c.error,
+                  ),
+                ],
+              ),
             if (i != _monthly.length - 1) const MiuixHorizontalDivider(),
           ],
         ],
@@ -198,30 +218,53 @@ class _StatPageState extends State<StatPage> {
             )
           else
             for (int i = 0; i < owing.length; i++) ...<Widget>[
-              MiuixBasicComponent(
-                title: owing[i].roomNo,
-                summary: owing[i].isOccupied ? owing[i].tenant : '空置',
-                endActions: <Widget>[
-                  Column(
-                    crossAxisAlignment: CrossAxisAlignment.end,
-                    children: <Widget>[
-                      if (_rentOwed.containsKey(owing[i].roomNo))
-                        StatusTag(
-                          '房租欠 ¥${_rentOwed[owing[i].roomNo]}',
-                          color: c.error,
-                        ),
-                      if (_utilOwed.containsKey(owing[i].roomNo)) ...<Widget>[
+              if (useStackedLayout(context))
+                Padding(
+                  padding: const EdgeInsets.all(18),
+                  child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        MiuixText(owing[i].roomNo,
+                            fontSize: 18, fontWeight: FontWeight.w700),
+                        const SizedBox(height: 6),
+                        MiuixText(owing[i].isOccupied ? owing[i].tenant : '空置',
+                            fontSize: 13, color: c.onSurfaceVariantSummary),
+                        const SizedBox(height: 12),
+                        Wrap(spacing: 8, runSpacing: 8, children: [
+                          if (_rentOwed.containsKey(owing[i].roomNo))
+                            StatusTag('房租欠 ¥${_rentOwed[owing[i].roomNo]}',
+                                color: c.error),
+                          if (_utilOwed.containsKey(owing[i].roomNo))
+                            StatusTag('水电欠 ¥${_utilOwed[owing[i].roomNo]}',
+                                color: const Color(0xFFFF9500)),
+                        ]),
+                      ]),
+                )
+              else
+                MiuixBasicComponent(
+                  title: owing[i].roomNo,
+                  summary: owing[i].isOccupied ? owing[i].tenant : '空置',
+                  endActions: <Widget>[
+                    Column(
+                      crossAxisAlignment: CrossAxisAlignment.end,
+                      children: <Widget>[
                         if (_rentOwed.containsKey(owing[i].roomNo))
-                          const SizedBox(height: 4),
-                        StatusTag(
-                          '水电欠 ¥${_utilOwed[owing[i].roomNo]}',
-                          color: const Color(0xFFFF9500),
-                        ),
+                          StatusTag(
+                            '房租欠 ¥${_rentOwed[owing[i].roomNo]}',
+                            color: c.error,
+                          ),
+                        if (_utilOwed.containsKey(owing[i].roomNo)) ...<Widget>[
+                          if (_rentOwed.containsKey(owing[i].roomNo))
+                            const SizedBox(height: 4),
+                          StatusTag(
+                            '水电欠 ¥${_utilOwed[owing[i].roomNo]}',
+                            color: const Color(0xFFFF9500),
+                          ),
+                        ],
                       ],
-                    ],
-                  ),
-                ],
-              ),
+                    ),
+                  ],
+                ),
               if (i != owing.length - 1) const MiuixHorizontalDivider(),
             ],
         ],

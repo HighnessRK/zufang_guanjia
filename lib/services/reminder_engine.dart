@@ -27,6 +27,7 @@ class ReminderEngine {
     final String period = DateUtil.currentPeriod;
 
     for (final Room room in rooms) {
+      if (cfg.isExcludedRoom(room.roomNo)) continue;
       //================ 1. 租期到期提醒 ================
       final int? days = DateUtil.daysFromNow(room.expire);
       if (days != null) {
@@ -127,6 +128,7 @@ class ReminderEngine {
       } else {
         empty++;
       }
+      if (AppConfig.instance.isExcludedRoom(room.roomNo)) continue;
       final int? days = DateUtil.daysFromNow(room.expire);
       if (days != null && days <= remindDays) expireSoon++;
     }
@@ -138,6 +140,7 @@ class ReminderEngine {
         await PaymentRepository.instance.byPeriod(DateUtil.currentPeriod);
     int rentDue = 0, rentPaid = 0, utilityDue = 0, utilityUnpaid = 0;
     for (final Payment p in cur) {
+      if (AppConfig.instance.isExcludedRoom(p.roomNo)) continue;
       if (p.payType == AppConstants.payTypeRent) {
         rentDue += p.due;
         rentPaid += p.paid;

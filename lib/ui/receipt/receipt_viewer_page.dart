@@ -92,9 +92,17 @@ class _ReceiptViewerPageState extends State<ReceiptViewerPage> {
             const SizedBox(height: 22),
 
             // ===== 行动区 =====
-            Row(
+            Flex(
+              direction:
+                  useStackedLayout(context) ? Axis.vertical : Axis.horizontal,
+              crossAxisAlignment: useStackedLayout(context)
+                  ? CrossAxisAlignment.stretch
+                  : CrossAxisAlignment.center,
               children: <Widget>[
-                Expanded(
+                Flexible(
+                  flex: useStackedLayout(context) ? 0 : 1,
+                  fit:
+                      useStackedLayout(context) ? FlexFit.loose : FlexFit.tight,
                   child: GradientButton(
                     label: _busy ? '处理中…' : '保存到相册',
                     icon: Icons.download_rounded,
@@ -102,8 +110,11 @@ class _ReceiptViewerPageState extends State<ReceiptViewerPage> {
                     onPressed: _save,
                   ),
                 ),
-                const SizedBox(width: 10),
-                Expanded(
+                const SizedBox(width: 10, height: 10),
+                Flexible(
+                  flex: useStackedLayout(context) ? 0 : 1,
+                  fit:
+                      useStackedLayout(context) ? FlexFit.loose : FlexFit.tight,
                   child: GradientButton(
                     label: _busy ? '处理中…' : '转发微信',
                     icon: Icons.share_rounded,
@@ -136,7 +147,8 @@ class _ReceiptViewerPageState extends State<ReceiptViewerPage> {
       child: Opacity(
         opacity: _busy ? 0.6 : 1,
         child: Container(
-          height: 42,
+          constraints: const BoxConstraints(minHeight: 42),
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
           alignment: Alignment.center,
           decoration: BoxDecoration(
             color: c.error.withValues(alpha: 0.10),
@@ -144,9 +156,7 @@ class _ReceiptViewerPageState extends State<ReceiptViewerPage> {
             border: Border.all(color: c.error.withValues(alpha: 0.30)),
           ),
           child: MiuixText('删除收据',
-              fontSize: 14.5,
-              fontWeight: FontWeight.w600,
-              color: c.error),
+              fontSize: 14.5, fontWeight: FontWeight.w600, color: c.error),
         ),
       ),
     );

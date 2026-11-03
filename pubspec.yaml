@@ -1,7 +1,7 @@
 name: zufang_guanjia
 description: 租房管家 —— 纯本地离线租房管理安卓 APP（房源 / 租户 / 房租 / 水电费 / 到期提醒）。
 publish_to: 'none'
-version: 1.2.1+16
+version: 1.2.2+17
 
 environment:
   # 需要 Flutter 3.24 及以上稳定版（Dart 3.5）
@@ -34,8 +34,17 @@ dependencies:
   # ====== 相机拍照：电表读数大模型识别的取图入口（Android 走系统相机 Intent，
   #      不申请 CAMERA 运行时权限）======
   image_picker: ^1.1.2
+  llama_cpp_dart: ^0.9.0-dev.12
+  crypto: ^3.0.7
+  image: ^4.12.0
+
+dependency_overrides:
+  llama_cpp_dart:
+    path: packages/llama_cpp_dart
 
 dev_dependencies:
+  sqflite_common_ffi: 2.3.6
+  sqlite3: ^2.9.0
   flutter_test:
     sdk: flutter
   flutter_lints: ^4.0.0

@@ -40,6 +40,7 @@
     </queries>
 
     <application
+        android:extractNativeLibs="true"
         android:label="租房管家"
         android:name="${applicationName}"
         android:icon="@mipmap/ic_launcher"

@@ -50,152 +50,187 @@ class ReceiptCard extends StatelessWidget {
       ),
       child: Stack(
         children: <Widget>[
-        Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: <Widget>[
-          // ===== 标题区 =====
-          Row(
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
             children: <Widget>[
-              Container(
-                width: 30,
-                height: 30,
-                decoration: BoxDecoration(
-                  gradient: const LinearGradient(
-                    colors: <Color>[Color(0xFF3482FF), Color(0xFF7B5CFF)],
+              // ===== 标题区 =====
+              Row(
+                children: <Widget>[
+                  Container(
+                    width: 30,
+                    height: 30,
+                    decoration: BoxDecoration(
+                      gradient: const LinearGradient(
+                        colors: <Color>[Color(0xFF3482FF), Color(0xFF7B5CFF)],
+                      ),
+                      borderRadius: BorderRadius.circular(9),
+                    ),
+                    child: const Icon(Icons.receipt_long_rounded,
+                        size: 17, color: Colors.white),
                   ),
-                  borderRadius: BorderRadius.circular(9),
-                ),
-                child: const Icon(Icons.receipt_long_rounded,
-                    size: 17, color: Colors.white),
+                  const SizedBox(width: 9),
+                  Expanded(
+                      child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: <Widget>[
+                      MiuixText('${r.kindText}收据',
+                          fontSize: 16.5,
+                          fontWeight: FontWeight.w800,
+                          color: _ink),
+                      const MiuixText('电子收据', fontSize: 10, color: _sub),
+                    ],
+                  )),
+                ],
               ),
-              const SizedBox(width: 9),
+              const SizedBox(height: 14),
+              _divider(),
+              const SizedBox(height: 10),
+
+              // ===== 抬头信息 =====
+              _kv(context, '收据编号', r.no),
+              _kv(context, '房    号', r.roomNo),
+              if (r.tenant.isNotEmpty) _kv(context, '租    户', r.tenant),
+              _kv(context, '账    期', r.periodText),
+              const SizedBox(height: 10),
+              _divider(),
+              const SizedBox(height: 10),
+
+              // ===== 费用明细 =====
+              // 乘式仅在用量 > 0 时展示：欠费/固定金额等场景用量可能为 0，
+              // 显示「0 吨 × 6 元/吨」会与右侧金额自相矛盾，此时只显示金额。
+              if (r.kind == 'rent') ...<Widget>[
+                _line(context, '房租实收', '', right: _money(r.total)),
+              ] else if (merged) ...<Widget>[
+                _line(context, '水电费', '', right: _money(r.total)),
+              ] else ...<Widget>[
+                if (showWater)
+                  _meterDetail(context, '水费', '吨', r.waterPrev, r.waterCurr,
+                      r.waterUse, r.waterPrice, r.waterFee),
+                if (showElec)
+                  _meterDetail(context, '电费', '度', r.elecPrev, r.elecCurr,
+                      r.elecUse, r.elecPrice, r.elecFee),
+              ],
+              const SizedBox(height: 10),
+              _divider(),
+              const SizedBox(height: 10),
+
+              // ===== 合计 =====
               Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: <Widget>[
-                  MiuixText('${r.kindText}收据',
-                      fontSize: 16.5,
+                  const MiuixText('合计金额',
+                      fontSize: 12.5, fontWeight: FontWeight.w600, color: _ink),
+                  const SizedBox(height: 6),
+                  MiuixText(_money(r.total),
+                      fontSize: 23,
                       fontWeight: FontWeight.w800,
-                      color: _ink),
-                  const MiuixText('电子收据',
-                      fontSize: 10, color: _sub),
+                      color: _accent),
                 ],
+              ),
+              const SizedBox(height: 8),
+              _kv(context, '金额大写', MoneyCaps.from(r.total)),
+              const SizedBox(height: 12),
+              _divider(),
+              const SizedBox(height: 8),
+
+              // ===== 页脚 =====
+              _kv(context, '生成时间', r.createdAt, small: true),
+              if (r.note.isNotEmpty)
+                _kv(context, '备    注', r.note, small: true),
+              const SizedBox(height: 8),
+              Center(
+                child: MiuixText(r.kind == 'rent' ? '仅作房租收缴凭证' : '仅作水电费收缴凭证',
+                    fontSize: 9.5, color: _sub),
               ),
             ],
           ),
-          const SizedBox(height: 14),
-          _divider(),
-          const SizedBox(height: 10),
-
-          // ===== 抬头信息 =====
-          _kv('收据编号', r.no),
-          _kv('房    号', r.roomNo),
-          if (r.tenant.isNotEmpty) _kv('租    户', r.tenant),
-           _kv('账    期', r.periodText),
-          const SizedBox(height: 10),
-          _divider(),
-          const SizedBox(height: 10),
-
-          // ===== 费用明细 =====
-          // 乘式仅在用量 > 0 时展示：欠费/固定金额等场景用量可能为 0，
-          // 显示「0 吨 × 6 元/吨」会与右侧金额自相矛盾，此时只显示金额。
-          if (r.kind == 'rent') ...<Widget>[
-            _line('房租实收', '', right: _money(r.total)),
-          ] else if (merged) ...<Widget>[
-            _line('水电费', '', right: _money(r.total)),
-          ] else ...<Widget>[
-            if (showWater) _meterDetail('水费', '吨', r.waterPrev,
-                r.waterCurr, r.waterUse, r.waterPrice, r.waterFee),
-            if (showElec) _meterDetail('电费', '度', r.elecPrev,
-                r.elecCurr, r.elecUse, r.elecPrice, r.elecFee),
-          ],
-          const SizedBox(height: 10),
-          _divider(),
-          const SizedBox(height: 10),
-
-          // ===== 合计 =====
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.end,
-            children: <Widget>[
-              const MiuixText('合计金额',
-                  fontSize: 12.5, fontWeight: FontWeight.w600, color: _ink),
-              const Spacer(),
-              MiuixText(_money(r.total),
-                  fontSize: 23,
-                  fontWeight: FontWeight.w800,
-                  color: _accent),
-            ],
-          ),
-          const SizedBox(height: 8),
-          _kv('金额大写', MoneyCaps.from(r.total)),
-          const SizedBox(height: 12),
-          _divider(),
-          const SizedBox(height: 8),
-
-          // ===== 页脚 =====
-          _kv('生成时间', r.createdAt, small: true),
-          if (r.note.isNotEmpty) _kv('备    注', r.note, small: true),
-          const SizedBox(height: 8),
-          Center(
-            child: MiuixText(r.kind == 'rent' ? '仅作房租收缴凭证' : '仅作水电费收缴凭证',
-                fontSize: 9.5, color: _sub),
-          ),
+          if (r.watermark.isNotEmpty)
+            Positioned.fill(
+                child: IgnorePointer(
+                    child: Center(
+              child: Transform.rotate(
+                  angle: -0.45,
+                  child: Text(r.watermark,
+                      textAlign: TextAlign.center,
+                      style: const TextStyle(
+                          fontSize: 28,
+                          color: Color(0x22333333),
+                          fontWeight: FontWeight.bold))),
+            ))),
         ],
-      ),
-      if (r.watermark.isNotEmpty)
-        Positioned.fill(child: IgnorePointer(child: Center(
-          child: Transform.rotate(angle: -0.45, child: Text(r.watermark,
-            textAlign: TextAlign.center,
-            style: const TextStyle(fontSize: 28, color: Color(0x22333333),
-              fontWeight: FontWeight.bold))),
-        ))),
-      ],
       ),
     );
   }
 
   Widget _divider() => Container(height: 1, color: _hair);
 
-  Widget _meterDetail(String label, String unit, int? prev, int? curr,
-      int? use, double? price, int fee) {
+  Widget _meterDetail(BuildContext context, String label, String unit,
+      int? prev, int? curr, int? use, double? price, int fee) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: <Widget>[
-        _line(label, '', right: _money(fee)),
-        _kv('上期读数', prev == null ? '未留存' : '$prev $unit', small: true),
-        _kv('本期读数', curr == null ? '未留存' : '$curr $unit', small: true),
-        _kv('本期用量', use == null ? '未留存' : '$use $unit', small: true),
-        _kv('单    价', price == null ? '未留存' : '${_num(price)} 元/$unit',
+        _line(context, label, '', right: _money(fee)),
+        _kv(context, '上期读数', prev == null ? '未留存' : '$prev $unit', small: true),
+        _kv(context, '本期读数', curr == null ? '未留存' : '$curr $unit', small: true),
+        _kv(context, '本期用量', use == null ? '未留存' : '$use $unit', small: true),
+        _kv(context, '单    价', price == null ? '未留存' : '${_num(price)} 元/$unit',
             small: true),
         const SizedBox(height: 6),
       ],
     );
   }
 
-  Widget _kv(String k, String v, {bool small = false}) {
+  Widget _kv(BuildContext context, String k, String v, {bool small = false}) {
+    final Widget label = MiuixText(k,
+        fontSize: small ? 10.5 : 11.5,
+        fontWeight: FontWeight.w500,
+        color: _sub);
+    final Widget value = MiuixText(v,
+        fontSize: small ? 11 : 12.5, fontWeight: FontWeight.w600, color: _ink);
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 3),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: <Widget>[
-          SizedBox(
-            width: 62,
-            child: MiuixText(k,
-                fontSize: small ? 10.5 : 11.5,
-                fontWeight: FontWeight.w500,
-                color: _sub),
-          ),
-          Expanded(
-            child: MiuixText(v,
-                fontSize: small ? 11 : 12.5,
-                fontWeight: FontWeight.w600,
-                color: _ink),
-          ),
-        ],
-      ),
+      child: LayoutBuilder(builder: (context, constraints) {
+        final measuredLabelWidth =
+            _textWidth(context, k, small ? 10.5 : 11.5, FontWeight.w500);
+        final labelWidth = measuredLabelWidth.clamp(
+            62 * MediaQuery.textScalerOf(context).scale(1), double.infinity);
+        final valueWidth =
+            _textWidth(context, v, small ? 11 : 12.5, FontWeight.w600);
+        final stacked = labelWidth + valueWidth + 16 > constraints.maxWidth;
+        return stacked
+            ? Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [label, const SizedBox(height: 2), value])
+            : Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                SizedBox(width: labelWidth + 12, child: label),
+                Expanded(child: value),
+              ]);
+      }),
     );
   }
 
-  Widget _line(String label, String sub, {String? right}) {
+  Widget _line(BuildContext context, String label, String sub,
+      {String? right}) {
+    final bool stacked = _textWidth(context, label, 13, FontWeight.w700) +
+            _textWidth(context, right ?? '', 14, FontWeight.w700) +
+            16 >
+        width - 40;
+    if (stacked) {
+      return Padding(
+        padding: const EdgeInsets.symmetric(vertical: 4),
+        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          MiuixText(label,
+              fontSize: 13, fontWeight: FontWeight.w700, color: _ink),
+          if (right != null) ...[
+            const SizedBox(height: 2),
+            Align(
+                alignment: Alignment.centerRight,
+                child: MiuixText(right,
+                    fontSize: 14, fontWeight: FontWeight.w700, color: _ink)),
+          ],
+        ]),
+      );
+    }
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 4),
       child: Row(
@@ -211,12 +246,24 @@ class ReceiptCard extends StatelessWidget {
           else
             const Spacer(),
           MiuixText(right ?? '',
-              fontSize: 14,
-              fontWeight: FontWeight.w700,
-              color: _ink),
+              fontSize: 14, fontWeight: FontWeight.w700, color: _ink),
         ],
       ),
     );
+  }
+
+  double _textWidth(
+      BuildContext context, String text, double size, FontWeight weight) {
+    final painter = TextPainter(
+      text: TextSpan(
+          text: text,
+          style: DefaultTextStyle.of(context)
+              .style
+              .copyWith(fontSize: size, fontWeight: weight)),
+      textScaler: MediaQuery.textScalerOf(context),
+      textDirection: Directionality.of(context),
+    )..layout();
+    return painter.width;
   }
 
   /// 千分位金额

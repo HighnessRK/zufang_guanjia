@@ -14,6 +14,7 @@ import 'mcp_settings_page.dart';
 import 'notify_settings_page.dart';
 import 'update_settings_page.dart';
 import 'feishu_settings_page.dart';
+import 'excluded_rooms_page.dart';
 
 /// 设置中心（一级页）：只保留模块入口与状态摘要，保持一屏可浏览；
 /// 每个模块的详细设置都在对应的二级页（自带返回按钮）。
@@ -58,6 +59,12 @@ class _SettingsPageState extends State<SettingsPage> {
                       summary: '水电单价 · 缴费周期',
                       onClick: () =>
                           _push(const BillingSettingsPage()),
+                    ),
+                    const MiuixHorizontalDivider(),
+                    MiuixArrowPreference(
+                      title: '白名单房间',
+                      summary: '费用不计入汇总 · 不提醒',
+                      onClick: () => _push(const ExcludedRoomsPage()),
                     ),
                     const MiuixHorizontalDivider(),
                     MiuixArrowPreference(

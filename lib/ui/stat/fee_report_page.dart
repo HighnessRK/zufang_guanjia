@@ -72,7 +72,8 @@ class _FeeReportPageState extends State<FeeReportPage> {
 
   int get _totalDebt => _rows.fold<int>(0, (int s, FeeTypeSum r) => s + r.debt);
 
-  int get _totalCount => _rows.fold<int>(0, (int s, FeeTypeSum r) => s + r.count);
+  int get _totalCount =>
+      _rows.fold<int>(0, (int s, FeeTypeSum r) => s + r.count);
 
   /// 预设是否正生效（from 精确到月、to 精确到日全部命中）
   bool _presetActive(int months) {
@@ -157,8 +158,7 @@ class _FeeReportPageState extends State<FeeReportPage> {
                     hint: '换个区间试试；房租与水电收缴后会自动生成流水',
                   ),
                 ),
-              ]
-              else ...<Widget>[
+              ] else ...<Widget>[
                 _buildSummary(c, months),
                 const SizedBox(height: 12),
                 const SectionTitle('分类明细'),
@@ -182,29 +182,58 @@ class _FeeReportPageState extends State<FeeReportPage> {
         children: <Widget>[
           Padding(
             padding: const EdgeInsets.fromLTRB(16, 12, 16, 10),
-            child: Row(
-              children: <Widget>[
-                for (int i = 0; i < presets.length; i++) ...<Widget>[
-                  if (i > 0) const SizedBox(width: 8),
-                  _chip(
-                    c,
-                    labels[i],
-                    active: _presetActive(presets[i]),
-                    onTap: () => _applyPreset(presets[i]),
-                  ),
+            child: LayoutBuilder(builder: (context, constraints) {
+              final columns = useStackedLayout(context) ? 2 : 4;
+              final chipWidth =
+                  (constraints.maxWidth - 8 * (columns - 1)) / columns;
+              return Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                children: <Widget>[
+                  for (int i = 0; i < presets.length; i++) ...<Widget>[
+                    SizedBox(
+                        width: chipWidth,
+                        child: _chip(
+                          c,
+                          labels[i],
+                          active: _presetActive(presets[i]),
+                          onTap: () => _applyPreset(presets[i]),
+                        )),
+                  ],
                 ],
-              ],
-            ),
+              );
+            }),
           ),
           Padding(
             padding: const EdgeInsets.fromLTRB(16, 4, 16, 16),
-            child: Row(children: [
-              Expanded(child: _dateButton(c, '开始日期', _from, true)),
-              Padding(padding: const EdgeInsets.symmetric(horizontal: 10),
-                child: Icon(Icons.arrow_forward_rounded, size: 18,
-                  color: c.onSurfaceVariantSummary)),
-              Expanded(child: _dateButton(c, '结束日期', _to, false)),
-            ]),
+            child: Flex(
+                direction:
+                    useStackedLayout(context) ? Axis.vertical : Axis.horizontal,
+                crossAxisAlignment: useStackedLayout(context)
+                    ? CrossAxisAlignment.stretch
+                    : CrossAxisAlignment.center,
+                children: [
+                  Flexible(
+                      flex: useStackedLayout(context) ? 0 : 1,
+                      fit: useStackedLayout(context)
+                          ? FlexFit.loose
+                          : FlexFit.tight,
+                      child: _dateButton(c, '开始日期', _from, true)),
+                  Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 10),
+                      child: Icon(
+                          useStackedLayout(context)
+                              ? Icons.arrow_downward_rounded
+                              : Icons.arrow_forward_rounded,
+                          size: 18,
+                          color: c.onSurfaceVariantSummary)),
+                  Flexible(
+                      flex: useStackedLayout(context) ? 0 : 1,
+                      fit: useStackedLayout(context)
+                          ? FlexFit.loose
+                          : FlexFit.tight,
+                      child: _dateButton(c, '结束日期', _to, false)),
+                ]),
           ),
         ],
       ),
@@ -212,52 +241,57 @@ class _FeeReportPageState extends State<FeeReportPage> {
   }
 
   Widget _dateButton(MiuixColors c, String label, DateTime date, bool from) =>
-      Semantics(button: true, child: InkWell(
-        borderRadius: BorderRadius.circular(14),
-        onTap: () => _pick(from),
-        child: Padding(padding: const EdgeInsets.symmetric(vertical: 10),
-          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            MiuixText(label, fontSize: 12, color: c.onSurfaceVariantSummary),
-            const SizedBox(height: 6),
-            Row(children: [
-              Icon(Icons.calendar_today_rounded, size: 15, color: c.primary),
-              const SizedBox(width: 6),
-              Expanded(child: FittedBox(fit: BoxFit.scaleDown,
-                alignment: Alignment.centerLeft,
-                child: MiuixText(DateUtil.format(date), fontSize: 14,
-                  fontWeight: FontWeight.w600))),
-            ]),
-          ])),
-      ));
+      Semantics(
+          button: true,
+          child: GestureDetector(
+            behavior: HitTestBehavior.opaque,
+            onTap: () => _pick(from),
+            child: Padding(
+                padding: const EdgeInsets.symmetric(vertical: 10),
+                child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      MiuixText(label,
+                          fontSize: 12, color: c.onSurfaceVariantSummary),
+                      const SizedBox(height: 6),
+                      Row(children: [
+                        Icon(Icons.calendar_today_rounded,
+                            size: 15, color: c.primary),
+                        const SizedBox(width: 6),
+                        Expanded(
+                            child: MiuixText(DateUtil.format(date),
+                                fontSize: 14, fontWeight: FontWeight.w600)),
+                      ]),
+                    ])),
+          ));
 
   Widget _chip(MiuixColors c, String label,
       {required bool active, required VoidCallback onTap}) {
-    return Expanded(
-      child: GestureDetector(
-        onTap: onTap,
-        behavior: HitTestBehavior.opaque,
-        child: AnimatedContainer(
-          duration: const Duration(milliseconds: 160),
-          curve: Curves.easeOutCubic,
-          height: 34,
-          alignment: Alignment.center,
-          decoration: BoxDecoration(
+    return GestureDetector(
+      onTap: onTap,
+      behavior: HitTestBehavior.opaque,
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 160),
+        curve: Curves.easeOutCubic,
+        constraints: const BoxConstraints(minHeight: 34),
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+        alignment: Alignment.center,
+        decoration: BoxDecoration(
+          color: active
+              ? c.primary.withValues(alpha: 0.14)
+              : c.surfaceContainer.withValues(alpha: 0.55),
+          borderRadius: BorderRadius.circular(11),
+          border: Border.all(
             color: active
-                ? c.primary.withValues(alpha: 0.14)
-                : c.surfaceContainer.withValues(alpha: 0.55),
-            borderRadius: BorderRadius.circular(11),
-            border: Border.all(
-              color: active
-                  ? c.primary.withValues(alpha: 0.45)
-                  : c.outline.withValues(alpha: 0.5),
-            ),
+                ? c.primary.withValues(alpha: 0.45)
+                : c.outline.withValues(alpha: 0.5),
           ),
-          child: MiuixText(
-            label,
-            fontSize: 12.5,
-            fontWeight: active ? FontWeight.w700 : FontWeight.w500,
-            color: active ? c.primary : c.onSurfaceSecondary,
-          ),
+        ),
+        child: MiuixText(
+          label,
+          fontSize: 12.5,
+          fontWeight: active ? FontWeight.w700 : FontWeight.w500,
+          color: active ? c.primary : c.onSurfaceSecondary,
         ),
       ),
     );
@@ -271,30 +305,44 @@ class _FeeReportPageState extends State<FeeReportPage> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: <Widget>[
-          Row(children: [
-            Icon(Icons.insights_rounded, color: c.primary, size: 22),
-            const SizedBox(width: 8),
-            MiuixText('区间实收', fontSize: 14, color: c.onSurfaceSecondary),
-            const Spacer(),
-            MiuixText('$months 个账期', fontSize: 12,
-              color: c.onSurfaceVariantSummary),
-          ]),
+          Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              crossAxisAlignment: WrapCrossAlignment.center,
+              children: [
+                Icon(Icons.insights_rounded, color: c.primary, size: 22),
+                const SizedBox(width: 8),
+                MiuixText('区间实收', fontSize: 14, color: c.onSurfaceSecondary),
+                MiuixText('$months 个账期',
+                    fontSize: 12, color: c.onSurfaceVariantSummary),
+              ]),
           const SizedBox(height: 14),
-          ReportAmount(_money(_totalPaid), fontSize: 36,
-            color: c.primary, bold: true),
+          ReportAmount(_money(_totalPaid),
+              fontSize: 36, color: c.primary, bold: true),
           const SizedBox(height: 16),
-          ClipRRect(borderRadius: BorderRadius.circular(6),
-            child: LinearProgressIndicator(
-              value: _totalDue <= 0 ? 0 : (_totalPaid / _totalDue).clamp(0, 1),
-              minHeight: 7, color: c.primary,
-              backgroundColor: c.primary.withValues(alpha: 0.10))),
+          ClipRRect(
+              borderRadius: BorderRadius.circular(6),
+              child: LinearProgressIndicator(
+                  value:
+                      _totalDue <= 0 ? 0 : (_totalPaid / _totalDue).clamp(0, 1),
+                  minHeight: 7,
+                  color: c.primary,
+                  backgroundColor: c.primary.withValues(alpha: 0.10))),
           const SizedBox(height: 18),
-          Row(
+          Flex(
+            direction:
+                useStackedLayout(context) ? Axis.vertical : Axis.horizontal,
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: <Widget>[
-              Expanded(
+              Flexible(
+                flex: useStackedLayout(context) ? 0 : 1,
+                fit: useStackedLayout(context) ? FlexFit.loose : FlexFit.tight,
                 child: _sumCol(c, '应收', _money(_totalDue), c.onSurface),
               ),
-              Expanded(
+              if (useStackedLayout(context)) const SizedBox(height: 12),
+              Flexible(
+                flex: useStackedLayout(context) ? 0 : 1,
+                fit: useStackedLayout(context) ? FlexFit.loose : FlexFit.tight,
                 child: _sumCol(
                   c,
                   '欠费',
@@ -334,19 +382,25 @@ class _FeeReportPageState extends State<FeeReportPage> {
         const SizedBox(height: 12),
       ],
       GlassCard(
-      borderRadius: 20,
-      padding: const EdgeInsets.all(16),
-      child: Column(
-        children: <Widget>[
-          Row(children: [
-            const Expanded(child: MiuixText('实收合计', fontSize: 14,
-              fontWeight: FontWeight.w600)),
-            Expanded(child: ReportAmount(_money(_totalPaid), fontSize: 22,
-              color: _kGreen, bold: true, alignment: Alignment.centerRight)),
-          ]),
-        ],
-      ),
-    )]);
+        borderRadius: 20,
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          children: <Widget>[
+            Row(children: [
+              const Expanded(
+                  child: MiuixText('实收合计',
+                      fontSize: 14, fontWeight: FontWeight.w600)),
+              Expanded(
+                  child: ReportAmount(_money(_totalPaid),
+                      fontSize: 22,
+                      color: _kGreen,
+                      bold: true,
+                      alignment: Alignment.centerRight)),
+            ]),
+          ],
+        ),
+      )
+    ]);
   }
 
   /// 千分位金额
@@ -381,46 +435,68 @@ class FeeCategoryCard extends StatelessWidget {
       'elec' => Icons.bolt_rounded,
       _ => Icons.water_rounded,
     };
-    return GlassCard(borderRadius: 22, padding: const EdgeInsets.all(18),
-      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        Row(children: [
-          Container(padding: const EdgeInsets.all(10),
-            decoration: BoxDecoration(color: color.withValues(alpha: 0.12),
-              borderRadius: BorderRadius.circular(14)),
-            child: Icon(icon, color: color, size: 24)),
-          const SizedBox(width: 12),
-          Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              MiuixText(row.label, fontSize: 17, fontWeight: FontWeight.w700),
-              const SizedBox(height: 3),
-              MiuixText('${row.count} 笔流水 · ${row.rooms} 间房', fontSize: 12,
-                color: c.onSurfaceVariantSummary),
-            ])),
-        ]),
-        const SizedBox(height: 20),
-        Row(children: [
-          for (final item in [
-            ('应收', row.due, c.onSurface),
-            ('实收', row.paid, const Color(0xFF299C63)),
-            ('待收', row.debt, row.debt > 0 ? const Color(0xFFE69531) : c.onSurfaceVariantSummary),
-          ]) Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              MiuixText(item.$1, fontSize: 12, color: c.onSurfaceVariantSummary),
-              const SizedBox(height: 6),
-              Padding(padding: const EdgeInsets.only(right: 8),
-                child: ReportAmount(_FeeReportPageState._money(item.$2),
-                  fontSize: 18, color: item.$3, bold: true)),
-            ])),
-        ]),
-      ]));
+    return GlassCard(
+        borderRadius: 22,
+        padding: const EdgeInsets.all(18),
+        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Row(children: [
+            Container(
+                padding: const EdgeInsets.all(10),
+                decoration: BoxDecoration(
+                    color: color.withValues(alpha: 0.12),
+                    borderRadius: BorderRadius.circular(14)),
+                child: Icon(icon, color: color, size: 24)),
+            const SizedBox(width: 12),
+            Expanded(
+                child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                  MiuixText(row.label,
+                      fontSize: 17, fontWeight: FontWeight.w700),
+                  const SizedBox(height: 3),
+                  MiuixText('${row.count} 笔流水 · ${row.rooms} 间房',
+                      fontSize: 12, color: c.onSurfaceVariantSummary),
+                ])),
+          ]),
+          const SizedBox(height: 20),
+          Row(children: [
+            for (final item in [
+              ('应收', row.due, c.onSurface),
+              ('实收', row.paid, const Color(0xFF299C63)),
+              (
+                '待收',
+                row.debt,
+                row.debt > 0
+                    ? const Color(0xFFE69531)
+                    : c.onSurfaceVariantSummary
+              ),
+            ])
+              Expanded(
+                  child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                    MiuixText(item.$1,
+                        fontSize: 12, color: c.onSurfaceVariantSummary),
+                    const SizedBox(height: 6),
+                    Padding(
+                        padding: const EdgeInsets.only(right: 8),
+                        child: ReportAmount(_FeeReportPageState._money(item.$2),
+                            fontSize: 18, color: item.$3, bold: true)),
+                  ])),
+          ]),
+        ]));
   }
 }
 
 /// Keep the complete amount on one line, including narrow screens / large fonts.
 /// Scale only when necessary rather than wrapping digits or hiding them.
 class ReportAmount extends StatelessWidget {
-  const ReportAmount(this.text, {super.key, required this.fontSize,
-    required this.color, this.bold = false, this.alignment = Alignment.centerLeft});
+  const ReportAmount(this.text,
+      {super.key,
+      required this.fontSize,
+      required this.color,
+      this.bold = false,
+      this.alignment = Alignment.centerLeft});
   final String text;
   final double fontSize;
   final Color color;
@@ -429,13 +505,17 @@ class ReportAmount extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => Align(
-    alignment: alignment,
-    child: FittedBox(
-      fit: BoxFit.scaleDown,
-      alignment: alignment,
-      child: Text(text, maxLines: 1, softWrap: false,
-        style: TextStyle(fontSize: fontSize,
-          fontWeight: bold ? FontWeight.w700 : FontWeight.w500, color: color)),
-    ),
-  );
+        alignment: alignment,
+        child: FittedBox(
+          fit: BoxFit.scaleDown,
+          alignment: alignment,
+          child: Text(text,
+              maxLines: 1,
+              softWrap: false,
+              style: TextStyle(
+                  fontSize: fontSize,
+                  fontWeight: bold ? FontWeight.w700 : FontWeight.w500,
+                  color: color)),
+        ),
+      );
 }

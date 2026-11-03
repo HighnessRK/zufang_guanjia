@@ -16,6 +16,11 @@ import 'app_editable_field.dart';
 /// 紧凑胶囊：高 60 + 底距 16 + 手势区约 20 + 余量 ≈ 108。
 const double kGlassNavClearance = 108;
 
+/// Switch composition rather than shrinking accessibility text to fit a row.
+bool useStackedLayout(BuildContext context) =>
+    MediaQuery.textScalerOf(context).scale(14) / 14 >= 1.4 ||
+    MediaQuery.sizeOf(context).width < 360;
+
 /// 全局 Snackbar 状态（每个 MiuixScaffold 都挂载同一个 Host）
 class AppSnackbar {
   AppSnackbar._();
@@ -23,7 +28,8 @@ class AppSnackbar {
   static final MiuixSnackbarHostState state = MiuixSnackbarHostState();
 
   /// 显示一条轻提示
-  static void show(String message, {String? actionLabel, VoidCallback? onAction}) {
+  static void show(String message,
+      {String? actionLabel, VoidCallback? onAction}) {
     state.showSnackbar(message, actionLabel: actionLabel);
   }
 }
@@ -79,6 +85,40 @@ class InfoRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final MiuixColors c = MiuixTheme.of(context).colors;
+    if (useStackedLayout(context)) {
+      return LayoutBuilder(builder: (context, constraints) {
+        final shown = value.isEmpty ? '—' : value;
+        double textWidth(String text, double size) {
+          final painter = TextPainter(
+              text: TextSpan(
+                  text: text,
+                  style: DefaultTextStyle.of(context)
+                      .style
+                      .copyWith(fontSize: size)),
+              textScaler: MediaQuery.textScalerOf(context),
+              textDirection: Directionality.of(context))
+            ..layout();
+          return painter.width;
+        }
+
+        final inline = textWidth(label, 12) + textWidth(shown, 14) + 32 <
+            constraints.maxWidth;
+        final labelText =
+            MiuixText(label, fontSize: 12, color: c.onSurfaceVariantSummary);
+        final valueText = MiuixText(shown,
+            fontSize: 14, color: highlight ? c.primary : c.onSurface);
+        return Padding(
+          padding: const EdgeInsets.symmetric(vertical: 9),
+          child: inline
+              ? Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [labelText, const SizedBox(width: 16), valueText])
+              : Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [labelText, const SizedBox(height: 5), valueText]),
+        );
+      });
+    }
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 7),
       child: Row(
@@ -195,13 +235,10 @@ class QuickEntry extends StatelessWidget {
               radius: 12,
             ),
             const SizedBox(height: 8),
-            // 单行不换行：5 项等宽平铺下 4 字标签保持一行
             MiuixText(
               label,
               fontSize: 12,
-              maxLines: 1,
-              softWrap: false,
-              overflow: TextOverflow.fade,
+              textAlign: TextAlign.center,
             ),
           ],
         ),
@@ -535,49 +572,49 @@ class _AuroraScaffoldState extends State<AuroraScaffold> {
     // 对话框等没有组的地方自动退回普通模糊，视觉完全一致。
     return BackdropGroup(
       child: Stack(
-      fit: StackFit.expand,
-      children: <Widget>[
-        // 最底层：与原 MiuixScaffold 默认背景一致的 surface 底色
-        // （三子节点均带 key：开关「高级材质」时增删极光层不会按位置
-        // 重挂 MiuixScaffold，保住页面滚动位置与输入状态）
-        ColoredBox(key: const ValueKey<String>('surface'), color: c.surface),
-        // 高级材质开：极光光斑铺满全屏（关：纯色底 + 卡片高斯模糊）
-        if (premium)
-          const Positioned.fill(
-            key: ValueKey<String>('aurora'),
-            child: AuroraBackground(),
+        fit: StackFit.expand,
+        children: <Widget>[
+          // 最底层：与原 MiuixScaffold 默认背景一致的 surface 底色
+          // （三子节点均带 key：开关「高级材质」时增删极光层不会按位置
+          // 重挂 MiuixScaffold，保住页面滚动位置与输入状态）
+          ColoredBox(key: const ValueKey<String>('surface'), color: c.surface),
+          // 高级材质开：极光光斑铺满全屏（关：纯色底 + 卡片高斯模糊）
+          if (premium)
+            const Positioned.fill(
+              key: ValueKey<String>('aurora'),
+              child: AuroraBackground(),
+            ),
+          // 透明脚手架：顶栏 / 内容 / Snackbar 全部叠在极光之上；
+          // 正文层顶部铺页面级渐变模糊面纱（顶栏底边定位 + 向下晕染），
+          // 与极光无缝衔接（各页顶栏 color 须透明）
+          Positioned.fill(
+            key: const ValueKey<String>('scaffold'),
+            child: MiuixScaffold(
+              containerColor: Colors.transparent,
+              topBar: widget.topBar,
+              snackbarHost: widget.snackbarHost,
+              floatingActionButton: widget.floatingActionButton,
+              content: (EdgeInsets padding) {
+                final Widget body = widget.content(padding);
+                if (widget.topBar == null) return body;
+                // 面纱高度 = 顶栏区域（padding.top），不越过底边：
+                // 界内渐隐模糊，分界线下方的正文完全清晰
+                return Stack(
+                  children: <Widget>[
+                    body,
+                    Positioned(
+                      top: 0,
+                      left: 0,
+                      right: 0,
+                      height: padding.top,
+                      child: const IgnorePointer(child: _TopBarVeil()),
+                    ),
+                  ],
+                );
+              },
+            ),
           ),
-        // 透明脚手架：顶栏 / 内容 / Snackbar 全部叠在极光之上；
-        // 正文层顶部铺页面级渐变模糊面纱（顶栏底边定位 + 向下晕染），
-        // 与极光无缝衔接（各页顶栏 color 须透明）
-        Positioned.fill(
-          key: const ValueKey<String>('scaffold'),
-          child: MiuixScaffold(
-            containerColor: Colors.transparent,
-            topBar: widget.topBar,
-            snackbarHost: widget.snackbarHost,
-            floatingActionButton: widget.floatingActionButton,
-            content: (EdgeInsets padding) {
-              final Widget body = widget.content(padding);
-              if (widget.topBar == null) return body;
-              // 面纱高度 = 顶栏区域（padding.top），不越过底边：
-              // 界内渐隐模糊，分界线下方的正文完全清晰
-              return Stack(
-                children: <Widget>[
-                  body,
-                  Positioned(
-                    top: 0,
-                    left: 0,
-                    right: 0,
-                    height: padding.top,
-                    child: const IgnorePointer(child: _TopBarVeil()),
-                  ),
-                ],
-              );
-            },
-          ),
-        ),
-      ],
+        ],
       ),
     );
   }
@@ -618,7 +655,8 @@ class GlassCard extends StatelessWidget {
         filter: ImageFilter.blur(sigmaX: blurSigma, sigmaY: blurSigma),
         child: Container(
           padding: padding,
-          decoration: premium ? _glassDecoration(dark, r) : _frostDecoration(dark, r),
+          decoration:
+              premium ? _glassDecoration(dark, r) : _frostDecoration(dark, r),
           foregroundDecoration: premium
               ? BoxDecoration(
                   borderRadius: r,
@@ -663,7 +701,9 @@ class GlassCard extends StatelessWidget {
               ],
       ),
       border: Border.all(
-        color: dark ? Colors.white.withValues(alpha: 0.14) : Colors.white.withValues(alpha: 0.85),
+        color: dark
+            ? Colors.white.withValues(alpha: 0.14)
+            : Colors.white.withValues(alpha: 0.85),
         width: 1,
       ),
       boxShadow: <BoxShadow>[
@@ -682,9 +722,13 @@ class GlassCard extends StatelessWidget {
   BoxDecoration _frostDecoration(bool dark, BorderRadius r) {
     return BoxDecoration(
       borderRadius: r,
-      color: dark ? Colors.white.withValues(alpha: 0.07) : Colors.white.withValues(alpha: 0.62),
+      color: dark
+          ? Colors.white.withValues(alpha: 0.07)
+          : Colors.white.withValues(alpha: 0.62),
       border: Border.all(
-        color: dark ? Colors.white.withValues(alpha: 0.08) : const Color(0xFF98A7BD).withValues(alpha: 0.22),
+        color: dark
+            ? Colors.white.withValues(alpha: 0.08)
+            : const Color(0xFF98A7BD).withValues(alpha: 0.22),
         width: 1,
       ),
       boxShadow: <BoxShadow>[
@@ -794,10 +838,9 @@ class GradientButton extends StatelessWidget {
           child: BackdropFilter(
             filter: ImageFilter.blur(sigmaX: 18, sigmaY: 18),
             child: Container(
-              height: compact ? 34 : 52,
-              padding: compact
-                  ? const EdgeInsets.symmetric(horizontal: 14)
-                  : EdgeInsets.zero,
+              constraints: BoxConstraints(minHeight: compact ? 34 : 52),
+              padding: EdgeInsets.symmetric(
+                  horizontal: compact ? 14 : 16, vertical: compact ? 6 : 12),
               alignment: Alignment.center,
               decoration: BoxDecoration(
                 // 半透明渐变主色（保留原色彩识别度）
@@ -840,12 +883,14 @@ class GradientButton extends StatelessWidget {
                     Icon(icon, size: compact ? 16 : 20, color: Colors.white),
                     const SizedBox(width: 6),
                   ],
-                  MiuixText(
+                  Flexible(
+                      child: MiuixText(
                     label,
                     fontSize: compact ? 13 : 16,
                     fontWeight: FontWeight.w700,
                     color: Colors.white,
-                  ),
+                    textAlign: TextAlign.center,
+                  )),
                 ],
               ),
             ),
@@ -883,11 +928,9 @@ Future<bool?> showAppDialog(
       // 内容区高度并允许滚动，保证按钮行始终落在面板背景内。
       final MediaQueryData mq = MediaQuery.of(ctx);
       const double kChrome = 240; // 标题+摘要(2行)+内边距+间距+按钮行 保守值
-      final double maxContent = (mq.size.height -
-              mq.viewInsets.bottom -
-              mq.padding.top -
-              kChrome)
-          .clamp(120.0, double.infinity);
+      final double maxContent =
+          (mq.size.height - mq.viewInsets.bottom - mq.padding.top - kChrome)
+              .clamp(120.0, double.infinity);
       return MiuixOverlayDialog(
         show: true,
         renderInRootScaffold: false,
@@ -975,37 +1018,37 @@ Future<T?> showOptionPicker<T>(
               mainAxisSize: MainAxisSize.min,
               children: <Widget>[
                 for (int i = 0; i < options.length; i++) ...<Widget>[
-              if (i != 0) const MiuixHorizontalDivider(),
-              GestureDetector(
-                behavior: HitTestBehavior.opaque,
-                onTap: () => Navigator.of(ctx).pop(options[i].key),
-                child: Padding(
-                  padding: const EdgeInsets.symmetric(vertical: 13),
-                  child: Row(
-                    children: <Widget>[
-                      Expanded(
-                        child: MiuixText(
-                          options[i].value,
-                          fontSize: 15,
-                          fontWeight: options[i].key == current
-                              ? FontWeight.w700
-                              : FontWeight.w400,
-                          color: options[i].key == current
-                              ? c.primary
-                              : c.onSurface,
-                        ),
+                  if (i != 0) const MiuixHorizontalDivider(),
+                  GestureDetector(
+                    behavior: HitTestBehavior.opaque,
+                    onTap: () => Navigator.of(ctx).pop(options[i].key),
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 13),
+                      child: Row(
+                        children: <Widget>[
+                          Expanded(
+                            child: MiuixText(
+                              options[i].value,
+                              fontSize: 15,
+                              fontWeight: options[i].key == current
+                                  ? FontWeight.w700
+                                  : FontWeight.w400,
+                              color: options[i].key == current
+                                  ? c.primary
+                                  : c.onSurface,
+                            ),
+                          ),
+                          if (options[i].key == current)
+                            Icon(Icons.check_circle_rounded,
+                                size: 19, color: c.primary),
+                        ],
                       ),
-                      if (options[i].key == current)
-                        Icon(Icons.check_circle_rounded,
-                            size: 19, color: c.primary),
-                    ],
+                    ),
                   ),
-                ),
-              ),
-            ],
-          ],
-        ),
-        ),
+                ],
+              ],
+            ),
+          ),
         ),
       );
     },
@@ -1028,10 +1071,8 @@ Future<AppImageSource?> showImageSourceDialog(
 }) {
   const List<MapEntry<AppImageSource, String>> options =
       <MapEntry<AppImageSource, String>>[
-    MapEntry<AppImageSource, String>(
-        AppImageSource.camera, '拍照（打开相机）'),
-    MapEntry<AppImageSource, String>(
-        AppImageSource.gallery, '从相册选择（系统照片选择器）'),
+    MapEntry<AppImageSource, String>(AppImageSource.camera, '拍照（打开相机）'),
+    MapEntry<AppImageSource, String>(AppImageSource.gallery, '从相册选择（系统照片选择器）'),
   ];
   return showGeneralDialog<AppImageSource>(
     context: context,
@@ -1192,7 +1233,8 @@ class _DatePickDialogState extends State<_DatePickDialog> {
     _yearScroll?.dispose();
     // 每行高约 64（格高 56 + 间距 8），上留一行余量
     _yearScroll = ScrollController(
-      initialScrollOffset: (row * 64 - 64).clamp(0.0, double.infinity).toDouble(),
+      initialScrollOffset:
+          (row * 64 - 64).clamp(0.0, double.infinity).toDouble(),
     );
     setState(() => _pickingYear = true);
   }
@@ -1415,8 +1457,7 @@ class _DatePickDialogState extends State<_DatePickDialog> {
     final int thisYear = DateTime.now().year;
     final int thisMonth = DateTime.now().month;
     // 越界月：首年只允许 firstDate.month 起，末年只到 lastDate.month 止
-    final int minM =
-        year == widget.firstDate.year ? widget.firstDate.month : 1;
+    final int minM = year == widget.firstDate.year ? widget.firstDate.month : 1;
     final int maxM = year == widget.lastDate.year ? widget.lastDate.month : 12;
     return SizedBox(
       height: 320,
@@ -1472,7 +1513,13 @@ class _DatePickDialogState extends State<_DatePickDialog> {
   /// 选中日期摘要：2026-10-22 · 周三
   String get _selectedLabel {
     const List<String> weeks = <String>[
-      '周一', '周二', '周三', '周四', '周五', '周六', '周日',
+      '周一',
+      '周二',
+      '周三',
+      '周四',
+      '周五',
+      '周六',
+      '周日',
     ];
     return '${DateUtil.format(_selected)} · ${weeks[_selected.weekday - 1]}';
   }
@@ -1611,8 +1658,8 @@ class _StepperButtonsState extends State<_StepperButtons> {
   void _startRepeat(int dir) {
     _repeat?.cancel();
     _bump(dir);
-    _repeat =
-        Timer.periodic(const Duration(milliseconds: 120), (Timer _) => _bump(dir));
+    _repeat = Timer.periodic(
+        const Duration(milliseconds: 120), (Timer _) => _bump(dir));
   }
 
   void _stopRepeat() {
@@ -1934,19 +1981,23 @@ class _AppLabelFieldState extends State<AppLabelField> {
   @override
   Widget build(BuildContext context) {
     final MiuixColors c = MiuixTheme.of(context).colors;
+    final stacked = useStackedLayout(context);
     return Padding(
       padding: const EdgeInsets.only(bottom: 12),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: <Widget>[
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.center,
+          Flex(
+            direction: stacked ? Axis.vertical : Axis.horizontal,
+            crossAxisAlignment:
+                stacked ? CrossAxisAlignment.start : CrossAxisAlignment.center,
             children: <Widget>[
               // 标签在框外左侧，与输入框同行左右分布（不贴框、不遮内容）
               Padding(
-                padding: const EdgeInsets.only(right: 10),
+                padding: EdgeInsets.only(
+                    right: stacked ? 0 : 10, bottom: stacked ? 8 : 0),
                 child: SizedBox(
-                  width: widget.labelWidth,
+                  width: stacked ? null : widget.labelWidth,
                   child: MiuixText(
                     widget.label,
                     fontSize: 14,
@@ -1955,7 +2006,9 @@ class _AppLabelFieldState extends State<AppLabelField> {
                   ),
                 ),
               ),
-              Expanded(
+              Flexible(
+                flex: stacked ? 0 : 1,
+                fit: stacked ? FlexFit.loose : FlexFit.tight,
                 child: AppEditableField(
                   // 聚焦瞬间把占位传空 → 灰色提示立即消失，不与输入内容打架
                   label: _focus || !_empty ? '' : (widget.hint ?? ''),
@@ -1988,7 +2041,8 @@ class _AppLabelFieldState extends State<AppLabelField> {
               }
               return Padding(
                 // 与输入框左缘对齐（标签宽 + 间距）
-                padding: EdgeInsets.only(left: widget.labelWidth + 10, top: 5),
+                padding: EdgeInsets.only(
+                    left: stacked ? 0 : widget.labelWidth + 10, top: 5),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   mainAxisSize: MainAxisSize.min,
@@ -2000,8 +2054,8 @@ class _AppLabelFieldState extends State<AppLabelField> {
                         child: MiuixText(
                           cap,
                           fontSize: 11,
-                          color: widget.captionColor ??
-                              c.onSurfaceVariantSummary,
+                          color:
+                              widget.captionColor ?? c.onSurfaceVariantSummary,
                         ),
                       ),
                   ],
@@ -2026,6 +2080,19 @@ class CalcLine extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final MiuixColors c = MiuixTheme.of(context).colors;
+    if (useStackedLayout(context)) {
+      return Padding(
+        padding: const EdgeInsets.symmetric(vertical: 8),
+        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          MiuixText(label, fontSize: 12, color: c.onSurfaceVariantSummary),
+          const SizedBox(height: 4),
+          MiuixText(value,
+              fontSize: emphasis ? 18 : 15,
+              fontWeight: emphasis ? FontWeight.w700 : FontWeight.w500,
+              color: emphasis ? c.primary : c.onSurface),
+        ]),
+      );
+    }
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 5),
       child: Row(

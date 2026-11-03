@@ -31,6 +31,14 @@ class AppChangelog {
 
   /// 全部版本（倒序：最新在最前）
   static const List<ChangelogVersion> versions = <ChangelogVersion>[
+    ChangelogVersion('1.2.2', '2026-11-03', <ChangelogEntry>[
+      ChangelogEntry('新增', '白名单房间不计房租水电汇总、不提醒，保留流水与拍照识别'),
+      ChangelogEntry('新增', 'Xiaomi-OCR-0 离线识图：下载、暂停恢复、校验与本地优先'),
+      ChangelogEntry('新增', '整层多表自动分窗识别，五块表实拍读数全部通过'),
+      ChangelogEntry('优化', '100%、110%、125% 系统字体紧凑适配，长姓名和大金额不截断'),
+      ChangelogEntry('优化', '识别失败自动回退云端；仅本地模式绝不上传照片'),
+      ChangelogEntry('修复', '本地输出截断或格式异常时不再填入错误读数'),
+    ]),
     ChangelogVersion('1.2.1', '2026-10-27', <ChangelogEntry>[
       ChangelogEntry('修复', '连接参数删除续输回弹，标识符禁用输入法联想并在输入阶段结束合成'),
       ChangelogEntry('优化', '飞书 App Secret 使用普通输入法，支持复制粘贴，列表摘要仍隐藏'),

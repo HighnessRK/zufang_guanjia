@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'dart:convert';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart' show rootBundle;
@@ -139,6 +140,12 @@ class AppConfig extends ChangeNotifier {
 
   /// 内置通知中心已读消息 ID（逗号分隔）
   String noticeReadIds = '';
+  String ocrMode = 'auto';
+
+  /// Current exclusions apply to historical and future aggregate reports;
+  /// underlying room, meter and payment records are never changed.
+  Set<String> excludedRooms = <String>{};
+  bool isExcludedRoom(String roomNo) => excludedRooms.contains(roomNo);
 
   /// 高级材质：true = 液态玻璃（极光底 + 玻璃高光卡片），false = 高斯模糊
   /// （纯色底 + 毛玻璃卡片）
@@ -269,6 +276,14 @@ class AppConfig extends ChangeNotifier {
     notifyEnabled = map['notify_enabled'] != '0';
     focusEnabled = map['focus_enabled'] != '0';
     noticeReadIds = map['notice_read_ids'] ?? '';
+    ocrMode = ['auto', 'local', 'cloud'].contains(map['ocr_mode'])
+        ? map['ocr_mode']! : 'auto';
+    try {
+      final value = jsonDecode(map['excluded_rooms'] ?? '[]');
+      excludedRooms = value is List ? value.whereType<String>().toSet() : <String>{};
+    } catch (_) {
+      excludedRooms = <String>{};
+    }
     premiumMaterial = map['premium_material'] != '0';
     llmBaseUrl = map['llm_base_url'] ?? '';
     llmApiKey = map['llm_api_key'] ?? '';
@@ -348,6 +363,8 @@ class AppConfig extends ChangeNotifier {
       ..writeln('expire_remind_days=$expireRemindDays')
       ..writeln('notify_enabled=${notifyEnabled ? 1 : 0}')
       ..writeln('focus_enabled=${focusEnabled ? 1 : 0}')
+      ..writeln('ocr_mode=$ocrMode')
+      ..writeln('excluded_rooms=${jsonEncode(excludedRooms.toList()..sort())}')
       ..writeln()
       ..writeln('#—— 外观材质 ———')
       ..writeln('# 高级材质 1=液态玻璃 0=高斯模糊')

@@ -205,15 +205,15 @@ class _RoomsPageState extends State<RoomsPage> {
                     child: EmptyView('还没有房间，点右上角 + 新增一间吧'),
                   )
                 else
-                  for (final MapEntry<String, List<Room>> f in _floorsOf(list))
-                    ...<Widget>[
-                      _buildFloorHeader(f.key, f.value.length, c),
-                      if (!_collapsed.contains(f.key))
-                        for (int i = 0; i < f.value.length; i++) ...<Widget>[
-                          _buildRoomCard(f.value[i], c),
-                          const SizedBox(height: 12),
-                        ],
-                    ],
+                  for (final MapEntry<String, List<Room>> f
+                      in _floorsOf(list)) ...<Widget>[
+                    _buildFloorHeader(f.key, f.value.length, c),
+                    if (!_collapsed.contains(f.key))
+                      for (int i = 0; i < f.value.length; i++) ...<Widget>[
+                        _buildRoomCard(f.value[i], c),
+                        const SizedBox(height: 12),
+                      ],
+                  ],
               ],
             ),
           ),
@@ -272,6 +272,76 @@ class _RoomsPageState extends State<RoomsPage> {
     final bool utilDue = utilOwed > 0;
     final bool utilAccum = !utilDue && room.utilityFee > 0;
 
+    if (useStackedLayout(context)) {
+      final rentStatus = !room.isOccupied
+          ? '空置'
+          : rentOwed == 0
+              ? '房租已缴'
+              : '房租待收 ¥$rentOwed';
+      final utilityStatus = utilDue
+          ? '水电待收 ¥$utilOwed'
+          : utilAccum
+              ? '水电累计 ¥${room.utilityFee}'
+              : '水电已清';
+      return GestureDetector(
+        onLongPress: () => _roomActions(room),
+        child: GlassCard(
+          padding: const EdgeInsets.all(20),
+          borderRadius: 20,
+          onPressed: () => _openDetail(room.roomNo),
+          child:
+              Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Row(children: [
+              Expanded(
+                  child: MiuixText(room.roomNo,
+                      fontSize: 22,
+                      fontWeight: FontWeight.w700,
+                      color: c.onSurface)),
+              Icon(Icons.chevron_right_rounded,
+                  color: c.onSurfaceVariantSummary),
+            ]),
+            const SizedBox(height: 8),
+            MiuixText(room.isOccupied ? room.tenant : '空置中',
+                fontSize: 15, color: c.onSurface),
+            const SizedBox(height: 4),
+            MiuixText(_rentSummary(room),
+                fontSize: 13, color: c.onSurfaceVariantSummary),
+            if (room.roomType.isNotEmpty) ...[
+              const SizedBox(height: 4),
+              MiuixText(room.roomType,
+                  fontSize: 12, color: c.onSurfaceVariantSummary),
+            ],
+            const SizedBox(height: 14),
+            Wrap(spacing: 8, runSpacing: 8, children: [
+              StatusTag(rentStatus,
+                  color: rentOwed > 0 ? c.error : const Color(0xFF34C759)),
+              StatusTag(utilityStatus,
+                  color: utilDue
+                      ? const Color(0xFFFF9500)
+                      : c.onSurfaceVariantSummary),
+            ]),
+            const Padding(
+                padding: EdgeInsets.symmetric(vertical: 14),
+                child: MiuixHorizontalDivider()),
+            Wrap(spacing: 20, runSpacing: 12, children: [
+              MiuixText('押金 ¥${room.deposit}',
+                  fontSize: 12, color: c.onSurfaceVariantSummary),
+              MiuixText('钥匙 ${room.keyCount} 把',
+                  fontSize: 12, color: c.onSurfaceVariantSummary),
+              MiuixText('磁卡 ${room.cardCount} 张',
+                  fontSize: 12, color: c.onSurfaceVariantSummary),
+            ]),
+            if (days != null) ...[
+              const SizedBox(height: 12),
+              MiuixText('${room.expire} 到期 · ${DateUtil.humanDays(days)}',
+                  fontSize: 12,
+                  color: days <= 7 ? c.error : c.onSurfaceVariantSummary),
+            ],
+          ]),
+        ),
+      );
+    }
+
     return GestureDetector(
       // 【v1.1.1】长按房间卡片出「编辑 / 复制」快捷菜单：
       // 编辑 = 进编辑页；复制 = 沿用该房配置（楼层 / 房型 / 租金 / 押金 /
@@ -283,96 +353,87 @@ class _RoomsPageState extends State<RoomsPage> {
         onPressed: () => _openDetail(room.roomNo),
         child: Column(
           children: <Widget>[
-            MiuixBasicComponent(
-            startAction: Container(
-              width: 42,
-              height: 42,
-              decoration: BoxDecoration(
-                color: c.primary.withValues(alpha: 0.14),
-                borderRadius: BorderRadius.circular(12),
-              ),
-              child: Center(
-                child: MiuixText(
-                  room.roomNo.length > 3
-                      ? room.roomNo.substring(room.roomNo.length - 3)
-                      : room.roomNo,
-                  fontSize: 13,
-                  fontWeight: FontWeight.w700,
-                  color: c.primary,
-                ),
-              ),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 12, 16, 14),
+              child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(children: [
+                      Expanded(
+                          child: MiuixText(room.roomNo,
+                              fontSize: 20, fontWeight: FontWeight.w700)),
+                      Icon(Icons.chevron_right_rounded,
+                          size: 20, color: c.onSurfaceVariantSummary),
+                    ]),
+                    const SizedBox(height: 5),
+                    MiuixText(room.isOccupied ? room.tenant : '空置中',
+                        fontSize: 14, color: c.onSurface),
+                    const SizedBox(height: 4),
+                    MiuixText(
+                        '${_rentSummary(room)}${room.roomType.isEmpty ? '' : ' · ${room.roomType}'}',
+                        fontSize: 12,
+                        color: c.onSurfaceVariantSummary),
+                    const SizedBox(height: 10),
+                    Wrap(spacing: 8, runSpacing: 6, children: [
+                      StatusTag(
+                          !room.isOccupied
+                              ? '空置'
+                              : rentOwed == 0
+                                  ? '房租已缴'
+                                  : '房租待收 ¥$rentOwed',
+                          color: !room.isOccupied
+                              ? c.onSurfaceVariantSummary
+                              : rentOwed > 0
+                                  ? c.error
+                                  : const Color(0xFF34C759)),
+                      StatusTag(
+                          utilDue
+                              ? '水电待收 ¥$utilOwed'
+                              : utilAccum
+                                  ? '水电累计 ¥${room.utilityFee}'
+                                  : '水电已清',
+                          color: utilDue
+                              ? const Color(0xFFFF9500)
+                              : utilAccum
+                                  ? c.onSurfaceVariantSummary
+                                  : const Color(0xFF34C759)),
+                    ]),
+                  ]),
             ),
-            title: room.roomNo,
-            summary:
-                '${room.isOccupied ? room.tenant : '空置中'} · ${room.roomType.isEmpty ? '未填房型' : room.roomType} · ${_rentSummary(room)}',
-            endActions: <Widget>[
-              Column(
-                crossAxisAlignment: CrossAxisAlignment.end,
+            const MiuixHorizontalDivider(),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 10, 16, 12),
+              child: Row(
                 children: <Widget>[
-                  // 空置房不挂房租状态：空置不产生房租欠款
-                  // （与待办提醒 / 应收统计口径一致）
-                  StatusTag(
-                    !room.isOccupied
-                        ? '空置'
-                        : rentOwed == 0
-                            ? '房租已缴'
-                            : '房租未缴 ¥$rentOwed',
-                    color: !room.isOccupied
-                        ? c.onSurfaceVariantSummary
-                        : rentOwed == 0
-                            ? const Color(0xFF34C759)
-                            : c.error,
-                  ),
-                  const SizedBox(height: 4),
-                  StatusTag(
-                    utilDue
-                        ? '水电待收 ¥$utilOwed'
-                        : (utilAccum
-                            ? '水电累计中 ¥${room.utilityFee}'
-                            : '水电已清'),
-                    color: utilDue
-                        ? const Color(0xFFFF9500)
-                        : utilAccum
-                            ? c.onSurfaceVariantSummary
-                            : const Color(0xFF34C759),
+                  _MiniInfo('押金', '¥${room.deposit}', c),
+                  _MiniInfo('钥匙', '${room.keyCount} 把', c),
+                  _MiniInfo('磁卡', '${room.cardCount} 张', c),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.end,
+                      children: <Widget>[
+                        MiuixText('到期',
+                            fontSize: 11, color: c.onSurfaceVariantSummary),
+                        const SizedBox(height: 2),
+                        MiuixText(
+                          days == null
+                              ? '未设置'
+                              : '${room.expire}（${DateUtil.humanDays(days)}）',
+                          fontSize: 12,
+                          color: (days != null && days <= 7)
+                              ? c.error
+                              : c.onSurface,
+                        ),
+                      ],
+                    ),
                   ),
                 ],
               ),
-            ],
-          ),
-          const MiuixHorizontalDivider(),
-          Padding(
-            padding: const EdgeInsets.fromLTRB(16, 10, 16, 12),
-            child: Row(
-              children: <Widget>[
-                _MiniInfo('押金', '¥${room.deposit}', c),
-                _MiniInfo('钥匙', '${room.keyCount} 把', c),
-                _MiniInfo('磁卡', '${room.cardCount} 张', c),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.end,
-                    children: <Widget>[
-                      MiuixText('到期',
-                          fontSize: 11, color: c.onSurfaceVariantSummary),
-                      const SizedBox(height: 2),
-                      MiuixText(
-                        days == null
-                            ? '未设置'
-                            : '${room.expire}（${DateUtil.humanDays(days)}）',
-                        fontSize: 12,
-                        color:
-                            (days != null && days <= 7) ? c.error : c.onSurface,
-                      ),
-                    ],
-                  ),
-                ),
-              ],
             ),
-          ),
-        ],
+          ],
+        ),
       ),
-    ),
-  );
+    );
   }
 
   /// 租金文案：随设置的房租周期变化（年付显示年总额，月付显示月租），
@@ -398,8 +459,7 @@ class _RoomsPageState extends State<RoomsPage> {
   void _openAdd() {
     Navigator.of(context)
         .push(
-          AppPageRoute<void>(
-              builder: (BuildContext _) => const RoomEditPage()),
+          AppPageRoute<void>(builder: (BuildContext _) => const RoomEditPage()),
         )
         .then((_) => _load());
   }
@@ -424,9 +484,8 @@ class _RoomsPageState extends State<RoomsPage> {
     );
     if (act == null || !mounted) return;
     if (act == 'edit') {
-      await Navigator.of(context).push(
-          AppPageRoute<void>(
-              builder: (_) => RoomEditPage(roomNo: room.roomNo)));
+      await Navigator.of(context).push(AppPageRoute<void>(
+          builder: (_) => RoomEditPage(roomNo: room.roomNo)));
     } else {
       await Navigator.of(context).push(
           AppPageRoute<void>(builder: (_) => RoomEditPage(copyFrom: room)));

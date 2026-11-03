@@ -21,6 +21,11 @@ android {
     namespace = "com.zufang.guanjia"
     compileSdk = 36
     ndkVersion = "28.2.13676358"
+    // AGP 9 requires the packaging flag as well as extractNativeLibs in
+    // the manifest: llama.cpp dynamically discovers real backend .so files.
+    packaging {
+        jniLibs.useLegacyPackaging = true
+    }
 
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
@@ -29,6 +34,10 @@ android {
 
     defaultConfig {
         applicationId = "com.zufang.guanjia"
+        if ((project.findProperty("target") as? String)?.endsWith("ocr_device_probe.dart") == true ||
+            (project.findProperty("target") as? String)?.endsWith("ui_device_probe.dart") == true) {
+            applicationIdSuffix = ".ocrprobe"
+        }
         // 兼容绝大多数 Android 机型（Android 5.0+）
         minSdk = flutter.minSdkVersion
         // Android 16：适配 edge-to-edge 强制开启与小米超级岛 / 焦点通知

@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../../services/ocr/model_manager.dart';
 import 'package:flutter_miuix/miuix.dart';
 import 'package:image_picker/image_picker.dart';
 
@@ -203,21 +204,24 @@ class _MeterPageState extends State<MeterPage> {
 
   Future<bool> _ensureLlmConfig() async {
     final AppConfig cfg = AppConfig.instance;
+    if (cfg.ocrMode != 'cloud' && ModelManager.instance.configured) {
+      await ModelManager.instance.init();
+    }
+    if (!mounted) return false;
+    if (cfg.ocrMode != 'cloud' && ModelManager.instance.ready) return true;
     if (cfg.llmBaseUrl.isEmpty ||
         cfg.llmApiKey.isEmpty ||
         cfg.llmVisionModel.isEmpty) {
       final bool? go = await showAppDialog(
         context,
         title: '未配置大模型 API',
-        summary:
-            '拍照识别需要先在「设置 → 大模型识别」填写地址 / Key / 视觉模型，现在去配置吗？',
+        summary: '拍照识别需要先在「设置 → 大模型识别」填写地址 / Key / 视觉模型，现在去配置吗？',
         confirmText: '去配置',
       );
       if (go == true && mounted) {
         // 直达「大模型识别」配置页：重置设置 Tab 栈后压入，避免落在
         // 该 Tab 上次停留的旧二级页（如缴费统计）上
-        AppShellScope.of(context)
-            .switchTabAndPush(4, const LlmSettingsPage());
+        AppShellScope.of(context).switchTabAndPush(4, const LlmSettingsPage());
       }
       return false;
     }
@@ -268,8 +272,7 @@ class _MeterPageState extends State<MeterPage> {
       AppSnackbar.show(e.message);
     } catch (e) {
       final String msg = '$e';
-      AppSnackbar.show(
-          '识别失败：${msg.length > 90 ? msg.substring(0, 90) : msg}');
+      AppSnackbar.show('识别失败：${msg.length > 90 ? msg.substring(0, 90) : msg}');
     } finally {
       if (mounted) {
         setState(() {
@@ -310,8 +313,7 @@ class _MeterPageState extends State<MeterPage> {
       AppSnackbar.show('大模型正在识别本层电表…');
 
       final bytes = await shot.readAsBytes();
-      final List<int> readings =
-          await LlmService.recognizeFloorMeterReadings(
+      final List<int> readings = await LlmService.recognizeFloorMeterReadings(
         bytes,
         roomNos: roomNos,
       );
@@ -322,9 +324,8 @@ class _MeterPageState extends State<MeterPage> {
       final List<String> filled = <String>[];
       int changed = 0;
       setState(() {
-        final int n = readings.length < roomNos.length
-            ? readings.length
-            : roomNos.length;
+        final int n =
+            readings.length < roomNos.length ? readings.length : roomNos.length;
         for (int i = 0; i < n; i++) {
           final int v = readings[i];
           if (v < 0) continue;
@@ -343,21 +344,18 @@ class _MeterPageState extends State<MeterPage> {
       } else if (changed == 0) {
         AppSnackbar.show('识别值与当前输入一致，没有变化：$summary');
       } else if (readings.length != roomNos.length) {
-        AppSnackbar.show(
-            '识别到 ${readings.length} 块表，本层有 ${roomNos.length} 间房，'
+        AppSnackbar.show('识别到 ${readings.length} 块表，本层有 ${roomNos.length} 间房，'
             '已按位置顺序填入 ${filled.length} 间（其中 $changed 间有变化）：'
             '$summary，请核对');
       } else {
-        AppSnackbar.show(
-            '已按位置顺序填入 ${filled.length} 间（其中 $changed 间有变化），'
+        AppSnackbar.show('已按位置顺序填入 ${filled.length} 间（其中 $changed 间有变化），'
             '请核对后保存：$summary');
       }
     } on StateError catch (e) {
       AppSnackbar.show(e.message);
     } catch (e) {
       final String msg = '$e';
-      AppSnackbar.show(
-          '识别失败：${msg.length > 90 ? msg.substring(0, 90) : msg}');
+      AppSnackbar.show('识别失败：${msg.length > 90 ? msg.substring(0, 90) : msg}');
     } finally {
       if (mounted) {
         setState(() {
@@ -421,10 +419,10 @@ class _MeterPageState extends State<MeterPage> {
     // 读数异常检查（0 视为「本期还没抄」，只有真正抄出的读数
     // 低于上期才提示异常）
     final List<Room> anomalies = changed.where((Room r) {
-      final int e = int.tryParse(_elecCtrls[r.roomNo]?.text.trim() ?? '') ??
-          r.elecCurr;
-      final int w = int.tryParse(_waterCtrls[r.roomNo]?.text.trim() ?? '') ??
-          r.waterCurr;
+      final int e =
+          int.tryParse(_elecCtrls[r.roomNo]?.text.trim() ?? '') ?? r.elecCurr;
+      final int w =
+          int.tryParse(_waterCtrls[r.roomNo]?.text.trim() ?? '') ?? r.waterCurr;
       return (e > 0 && e < r.elecPrev) || (w > 0 && w < r.waterPrev);
     }).toList();
     if (anomalies.isNotEmpty) {
@@ -528,9 +526,11 @@ class _MeterPageState extends State<MeterPage> {
                       ),
                     )
                   else ...<Widget>[
-                    for (final MapEntry<String, List<Room>> f in floors) ...<Widget>[
-                      SectionTitle(
-                          f.key == '—' ? '其他房间 · ${f.value.length} 间' : '${f.key} 层 · ${f.value.length} 间'),
+                    for (final MapEntry<String, List<Room>> f
+                        in floors) ...<Widget>[
+                      SectionTitle(f.key == '—'
+                          ? '其他房间 · ${f.value.length} 间'
+                          : '${f.key} 层 · ${f.value.length} 间'),
                       _buildFloorCard(c, f.key, f.value),
                       const SizedBox(height: 12),
                     ],
@@ -558,7 +558,8 @@ class _MeterPageState extends State<MeterPage> {
                 child: _waterSheetFloor == null
                     ? const SizedBox.shrink()
                     : _FloorSheet(
-                        key: ValueKey<String>('water_${_waterSheetFloor ?? ''}'),
+                        key:
+                            ValueKey<String>('water_${_waterSheetFloor ?? ''}'),
                         rooms: _roomsOf(_waterSheetFloor!),
                         prefill: <String, String>{
                           for (final Room r in _roomsOf(_waterSheetFloor!))
@@ -578,8 +579,7 @@ class _MeterPageState extends State<MeterPage> {
             MiuixOverlayBottomSheet(
               show: _elecSheetVisible && _elecSheetFloor != null,
               title: '${_floorName(_elecSheetFloor)} · 批量录入电表',
-              onDismissRequest: () =>
-                  setState(() => _elecSheetVisible = false),
+              onDismissRequest: () => setState(() => _elecSheetVisible = false),
               content: SizedBox(
                 height: 470,
                 child: _elecSheetFloor == null
@@ -738,8 +738,7 @@ class _MeterPageState extends State<MeterPage> {
     );
   }
 
-  /// 单间房行（单行紧凑版）：房号 | 电表输入（内嵌单间拍照相机）|
-  /// 水表输入 | 合计 + 收缴状态徽章（只读，收缴在房间编辑页操作）。
+  /// 单间房：房号与费用摘要在上，电、水读数等宽并排。
   /// 上期读数不再常驻展示，仅在「本期 < 上期」异常时追加一行警示。
   Widget _buildRoomRow(MiuixColors c, Room room) {
     final TextEditingController ec = _elecCtrls[room.roomNo]!;
@@ -756,94 +755,182 @@ class _MeterPageState extends State<MeterPage> {
     final bool accumulating = !dueNow && calc.totalFee > 0;
     final bool changed = _changed(room);
 
+    if (useStackedLayout(context)) {
+      Widget reading(
+              String label, TextEditingController controller, Color accent,
+              {Widget? action}) =>
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              MiuixText(label, fontSize: 12, color: c.onSurfaceVariantSummary),
+              const SizedBox(height: 6),
+              TextField(
+                controller: controller,
+                keyboardType: TextInputType.number,
+                style: TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.w600,
+                    color: c.onSurface),
+                decoration: InputDecoration(
+                  filled: true,
+                  fillColor: accent.withValues(alpha: 0.06),
+                  contentPadding:
+                      const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
+                  enabledBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(14),
+                      borderSide:
+                          BorderSide(color: accent.withValues(alpha: 0.2))),
+                  border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(14)),
+                  suffixIcon: action == null
+                      ? null
+                      : Padding(
+                          padding: const EdgeInsets.all(14), child: action),
+                ),
+              ),
+            ],
+          );
+      return Padding(
+        padding: const EdgeInsets.symmetric(vertical: 14),
+        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Wrap(
+              spacing: 12,
+              runSpacing: 6,
+              crossAxisAlignment: WrapCrossAlignment.center,
+              children: [
+                MiuixText(room.roomNo,
+                    fontSize: 19, fontWeight: FontWeight.w700),
+                if (changed) const StatusTag('未保存', color: Color(0xFFFF9500)),
+              ]),
+          const SizedBox(height: 14),
+          reading('电表读数', ec, const Color(0xFFFFB340),
+              action: _buildFieldCamera(c,
+                  busy: _recognizing && _recognizingRoom == room.roomNo,
+                  onTap: () => _captureRoomElec(room))),
+          const SizedBox(height: 12),
+          reading('水表读数', wc, const Color(0xFF2A7BFF)),
+          const SizedBox(height: 14),
+          Wrap(
+              spacing: 12,
+              runSpacing: 6,
+              crossAxisAlignment: WrapCrossAlignment.center,
+              children: [
+                MiuixText('合计 ¥${calc.totalFee}',
+                    fontSize: 15,
+                    fontWeight: FontWeight.w600,
+                    color: c.primary),
+                StatusTag(
+                    dueNow
+                        ? '待收'
+                        : accumulating
+                            ? '累计中'
+                            : '已结清',
+                    color: dueNow ? c.error : c.onSurfaceVariantSummary),
+              ]),
+          if (elecBad || waterBad) ...[
+            const SizedBox(height: 8),
+            MiuixText(
+                '本期读数小于上期，请核对：'
+                '${elecBad ? '电表 ${room.elecPrev}' : ''} '
+                '${waterBad ? '水表 ${room.waterPrev}' : ''}',
+                fontSize: 12,
+                color: c.error),
+          ],
+        ]),
+      );
+    }
+
     return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 6),
+      padding: const EdgeInsets.symmetric(vertical: 12),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: <Widget>[
-          Row(
-            children: <Widget>[
-              // 房号
-              MiuixText(room.roomNo,
-                  fontSize: 15, fontWeight: FontWeight.w700),
-              // 有未保存修改：橙色小圆点
-              if (changed) ...<Widget>[
-                const SizedBox(width: 5),
-                Container(
-                  width: 7,
-                  height: 7,
-                  decoration: const BoxDecoration(
-                    color: Color(0xFFFF9500),
-                    shape: BoxShape.circle,
-                  ),
+          SizedBox(
+            width: double.infinity,
+            child: Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              alignment: WrapAlignment.spaceBetween,
+              crossAxisAlignment: WrapCrossAlignment.center,
+              children: <Widget>[
+                // 房号
+                MiuixText(room.roomNo,
+                    fontSize: 15, fontWeight: FontWeight.w700),
+                if (changed) const StatusTag('未保存', color: Color(0xFFFF9500)),
+                // 合计 + 收缴状态（只读；收缴动作在房间编辑页）
+                Column(
+                  crossAxisAlignment: CrossAxisAlignment.end,
+                  children: <Widget>[
+                    MiuixText(
+                      '¥${calc.totalFee}',
+                      fontSize: 15,
+                      fontWeight: FontWeight.w800,
+                      color: calc.totalFee > 0
+                          ? c.primary
+                          : c.onSurfaceVariantSummary,
+                    ),
+                    const SizedBox(height: 2),
+                    Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: <Widget>[
+                        Icon(
+                          dueNow
+                              ? Icons.radio_button_unchecked_rounded
+                              : accumulating
+                                  ? Icons.schedule_rounded
+                                  : Icons.check_circle_rounded,
+                          size: 11,
+                          color: dueNow
+                              ? c.error
+                              : accumulating
+                                  ? const Color(0xFFFF9500)
+                                  : c.primary,
+                        ),
+                        const SizedBox(width: 3),
+                        MiuixText(
+                          dueNow ? '待收' : (accumulating ? '累计中' : '已结清'),
+                          fontSize: 10,
+                          color: dueNow
+                              ? c.error
+                              : accumulating
+                                  ? const Color(0xFFFF9500)
+                                  : c.primary,
+                        ),
+                      ],
+                    ),
+                  ],
                 ),
               ],
-              const SizedBox(width: 8),
-              // 电表：⚡ 前缀 + 行内相机
-              _buildReadingField(
-                c,
-                ec,
-                const Color(0xFFFFB340),
-                prefix: const Icon(Icons.bolt_rounded,
-                    size: 15, color: Color(0xFFFFB340)),
-                trailing: _buildFieldCamera(
+            ),
+          ),
+          const SizedBox(height: 8),
+          Row(
+            children: [
+              Expanded(
+                child: _buildReadingField(
                   c,
-                  busy: _recognizing && _recognizingRoom == room.roomNo,
-                  onTap: () => _captureRoomElec(room),
+                  ec,
+                  const Color(0xFFFFB340),
+                  label: '电表读数',
+                  prefix: const Icon(Icons.bolt_rounded,
+                      size: 15, color: Color(0xFFFFB340)),
+                  trailing: _buildFieldCamera(
+                    c,
+                    busy: _recognizing && _recognizingRoom == room.roomNo,
+                    onTap: () => _captureRoomElec(room),
+                  ),
                 ),
               ),
-              const SizedBox(width: 8),
-              // 水表：💧 前缀
-              _buildReadingField(
-                c,
-                wc,
-                const Color(0xFF2A7BFF),
-                prefix: const Icon(Icons.water_drop_rounded,
-                    size: 15, color: Color(0xFF2A7BFF)),
-              ),
-              const Spacer(),
-              // 合计 + 收缴状态（只读；收缴动作在房间编辑页）
-              Column(
-                crossAxisAlignment: CrossAxisAlignment.end,
-                children: <Widget>[
-                  MiuixText(
-                    '¥${calc.totalFee}',
-                    fontSize: 15,
-                    fontWeight: FontWeight.w800,
-                    color: calc.totalFee > 0
-                        ? c.primary
-                        : c.onSurfaceVariantSummary,
-                  ),
-                  const SizedBox(height: 2),
-                  Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: <Widget>[
-                      Icon(
-                        dueNow
-                            ? Icons.radio_button_unchecked_rounded
-                            : accumulating
-                                ? Icons.schedule_rounded
-                                : Icons.check_circle_rounded,
-                        size: 11,
-                        color: dueNow
-                            ? c.error
-                            : accumulating
-                                ? const Color(0xFFFF9500)
-                                : c.primary,
-                      ),
-                      const SizedBox(width: 3),
-                      MiuixText(
-                        dueNow ? '待收' : (accumulating ? '累计中' : '已结清'),
-                        fontSize: 10,
-                        color: dueNow
-                            ? c.error
-                            : accumulating
-                                ? const Color(0xFFFF9500)
-                                : c.primary,
-                      ),
-                    ],
-                  ),
-                ],
+              const SizedBox(width: 10),
+              Expanded(
+                child: _buildReadingField(
+                  c,
+                  wc,
+                  const Color(0xFF2A7BFF),
+                  label: '水表读数',
+                  prefix: const Icon(Icons.water_drop_rounded,
+                      size: 15, color: Color(0xFF2A7BFF)),
+                ),
               ),
             ],
           ),
@@ -869,12 +956,13 @@ class _MeterPageState extends State<MeterPage> {
     MiuixColors c,
     TextEditingController ctrl,
     Color accent, {
+    required String label,
     Widget? prefix,
     Widget? trailing,
   }) {
     return Container(
-      height: 42,
-      padding: const EdgeInsets.symmetric(horizontal: 8),
+      constraints: const BoxConstraints(minHeight: 48),
+      padding: const EdgeInsets.symmetric(horizontal: 6),
       decoration: BoxDecoration(
         color: accent.withValues(alpha: 0.05),
         borderRadius: BorderRadius.circular(12),
@@ -887,21 +975,23 @@ class _MeterPageState extends State<MeterPage> {
             prefix,
             const SizedBox(width: 4),
           ],
-          SizedBox(
-            width: 44,
-            child: TextField(
-              controller: ctrl,
-              keyboardType: TextInputType.number,
-              textAlign: TextAlign.center,
-              style: TextStyle(
-                fontSize: 15,
-                fontWeight: FontWeight.w600,
-                color: c.onSurface,
-              ),
-              decoration: const InputDecoration(
-                border: InputBorder.none,
-                isDense: true,
-                contentPadding: EdgeInsets.symmetric(vertical: 11),
+          Expanded(
+            child: Semantics(
+              label: label,
+              child: TextField(
+                controller: ctrl,
+                keyboardType: TextInputType.number,
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  fontSize: 15,
+                  fontWeight: FontWeight.w600,
+                  color: c.onSurface,
+                ),
+                decoration: const InputDecoration(
+                  border: InputBorder.none,
+                  isDense: true,
+                  contentPadding: EdgeInsets.symmetric(vertical: 8),
+                ),
               ),
             ),
           ),
@@ -1022,27 +1112,28 @@ class _FloorSheetState extends State<_FloorSheet> {
                 for (final Room r in widget.rooms)
                   Padding(
                     padding: const EdgeInsets.symmetric(vertical: 5),
-                    child: Row(
+                    child: Wrap(
+                      spacing: 8,
+                      runSpacing: 8,
+                      crossAxisAlignment: WrapCrossAlignment.center,
                       children: <Widget>[
-                        SizedBox(
-                          width: 52,
-                          child: MiuixText(r.roomNo,
-                              fontSize: 14, fontWeight: FontWeight.w600),
-                        ),
+                        MiuixText(r.roomNo,
+                            fontSize: 14, fontWeight: FontWeight.w600),
                         Icon(widget.icon, size: 15, color: accent),
                         const SizedBox(width: 6),
                         StatusTag('上期 ${_prev(r)}',
                             color: c.onSurfaceVariantSummary),
-                        const Spacer(),
                         Container(
-                          width: 96,
-                          height: 40,
+                          width:
+                              (110 * MediaQuery.textScalerOf(context).scale(1))
+                                  .clamp(110.0, 200.0),
+                          constraints: const BoxConstraints(minHeight: 48),
                           alignment: Alignment.center,
                           decoration: BoxDecoration(
                             color: accent.withValues(alpha: 0.05),
                             borderRadius: BorderRadius.circular(12),
-                            border:
-                                Border.all(color: accent.withValues(alpha: 0.16)),
+                            border: Border.all(
+                                color: accent.withValues(alpha: 0.16)),
                           ),
                           child: TextField(
                             controller: _ctrls[r.roomNo],

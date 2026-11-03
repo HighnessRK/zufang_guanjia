@@ -94,6 +94,8 @@ class _CollectPanelPageState extends State<CollectPanelPage> {
         await PaymentRepository.instance.unsettledRentByRoom();
     final Map<String, int> utilOwed =
         await PaymentRepository.instance.unsettledUtilityByRoom();
+    rentOwed.removeWhere((room, _) => AppConfig.instance.isExcludedRoom(room));
+    utilOwed.removeWhere((room, _) => AppConfig.instance.isExcludedRoom(room));
     if (!mounted || id != _loadId) return;
     setState(() {
       _all = list;
@@ -143,7 +145,7 @@ class _CollectPanelPageState extends State<CollectPanelPage> {
         scrollBehavior: _appBarBehavior,
         color: Colors.transparent,
         title: '收款',
-        subtitle: '房租 · 水费 · 电费 一处收齐',
+        subtitle: useStackedLayout(context) ? '' : '房租 · 水费 · 电费 一处收齐',
         actions: <Widget>[
           MiuixIconButton(
             onPressed: _load,
@@ -235,19 +237,23 @@ class _CollectPanelPageState extends State<CollectPanelPage> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: <Widget>[
-          MiuixText('待收合计',
-              fontSize: 13, color: c.onSurfaceVariantSummary),
+          MiuixText('待收合计', fontSize: 13, color: c.onSurfaceVariantSummary),
           const SizedBox(height: 10),
-          Row(
+          Flex(
+            direction:
+                useStackedLayout(context) ? Axis.vertical : Axis.horizontal,
+            crossAxisAlignment: useStackedLayout(context)
+                ? CrossAxisAlignment.stretch
+                : CrossAxisAlignment.center,
             children: <Widget>[
               _SumBlock('房租', rentTotal, c.error),
-              const SizedBox(width: 12),
+              const SizedBox(width: 12, height: 12),
               _SumBlock('水电', utilTotal, const Color(0xFFFF9500)),
             ],
           ),
           const SizedBox(height: 12),
           MiuixText(
-            '点任意一项右侧「收款」即入账，无需进入房间详情。',
+            '核对下方待收明细后，点击确认收款。',
             fontSize: 11,
             color: c.onSurfaceVariantSummary,
           ),
@@ -261,54 +267,30 @@ class _CollectPanelPageState extends State<CollectPanelPage> {
     final bool busy = _busy.contains(item.key);
     final bool isRent = item.payType == AppConstants.payTypeRent;
     return GlassCard(
-      borderRadius: 18,
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-      child: Row(
-        children: <Widget>[
-          Container(
-            width: 40,
-            height: 40,
-            decoration: BoxDecoration(
-              color: (isRent ? c.error : const Color(0xFFFF9500))
-                  .withValues(alpha: 0.14),
-              borderRadius: BorderRadius.circular(12),
-            ),
-            child: Icon(
-              isRent ? Icons.home_work_rounded : Icons.bolt_rounded,
-              size: 20,
-              color: isRent ? c.error : const Color(0xFFFF9500),
-            ),
-          ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: <Widget>[
-                MiuixText(
-                  '${item.roomNo} · ${item.label}',
-                  fontSize: 15,
-                  fontWeight: FontWeight.w600,
-                ),
-                if (item.tenant.isNotEmpty) ...<Widget>[
-                  const SizedBox(height: 2),
-                  MiuixText(
-                    item.tenant,
-                    fontSize: 12,
-                    color: c.onSurfaceVariantSummary,
-                  ),
-                ],
-              ],
-            ),
-          ),
-          const SizedBox(width: 12),
-          GradientButton(
-            label: busy ? '收款中…' : '收款 ¥${item.amount}',
-            compact: true,
-            enabled: !busy,
-            onPressed: () => _collect(item),
-          ),
+      borderRadius: 20,
+      padding: EdgeInsets.all(useStackedLayout(context) ? 20 : 16),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        MiuixText('${item.roomNo} · ${item.label}',
+            fontSize: 17, fontWeight: FontWeight.w700),
+        if (item.tenant.isNotEmpty) ...[
+          const SizedBox(height: 6),
+          MiuixText(item.tenant,
+              fontSize: 13, color: c.onSurfaceVariantSummary),
         ],
-      ),
+        const SizedBox(height: 14),
+        MiuixText('¥${item.amount}',
+            fontSize: 23,
+            fontWeight: FontWeight.w700,
+            color: isRent ? c.error : c.primary),
+        const SizedBox(height: 16),
+        SizedBox(
+            width: double.infinity,
+            child: GradientButton(
+              label: busy ? '收款中…' : '确认收款',
+              enabled: !busy,
+              onPressed: () => _collect(item),
+            )),
+      ]),
     );
   }
 
@@ -332,8 +314,7 @@ class _CollectPanelPageState extends State<CollectPanelPage> {
     try {
       if (isRent) {
         // 房租：本次收款额作为增量入账，收满本期欠额即自动结清
-        await PaymentRepository.instance
-            .collectRent(item.roomNo, item.amount);
+        await PaymentRepository.instance.collectRent(item.roomNo, item.amount);
       } else {
         // 水电：按房间当前水/电累计额分别整额结清
         // （各自累计清零 + 该表读数滚动进下一周期）
@@ -379,7 +360,9 @@ class _SumBlock extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final MiuixColors c = MiuixTheme.of(context).colors;
-    return Expanded(
+    return Flexible(
+      flex: useStackedLayout(context) ? 0 : 1,
+      fit: useStackedLayout(context) ? FlexFit.loose : FlexFit.tight,
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
         decoration: BoxDecoration(
@@ -390,8 +373,7 @@ class _SumBlock extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: <Widget>[
-            MiuixText(label,
-                fontSize: 12, color: c.onSurfaceVariantSummary),
+            MiuixText(label, fontSize: 12, color: c.onSurfaceVariantSummary),
             const SizedBox(height: 4),
             MiuixText(
               '¥$amount',
