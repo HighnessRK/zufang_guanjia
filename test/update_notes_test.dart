@@ -1,10 +1,25 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:zufang_guanjia/services/update_service.dart';
+import 'package:zufang_guanjia/core/constants/app_changelog.dart';
+import 'package:zufang_guanjia/core/constants/app_constants.dart';
 
 /// 解析 Release 说明正文为条目列表 —— 覆盖 v1.1.4 乱码修复的各场景。
 void main() {
+  test('本次版本日志完整往返发布正文，历史完整条目保留', () {
+    final latest = AppChangelog.versions.first;
+    expect(latest.version, AppConstants.appVersion);
+    final parsed = UpdateService.parseUpdateNotes(
+        latest.entries.map((e) => '- ${e.type}：${e.text}').join('\n'));
+    expect(parsed.map((e) => e.text), latest.entries.map((e) => e.text));
+    expect(parsed.map((e) => e.type), latest.entries.map((e) => e.type));
+    final previous =
+        AppChangelog.versions.firstWhere((v) => v.version == '1.2.2');
+    expect(previous.entries.length, greaterThan(10));
+    expect(previous.entries.any((e) => e.text.contains('SoC')), isTrue);
+  });
   test('描述性新增标题和带后缀分组保留标签及字段下划线', () {
-    final notes = UpdateService.parseUpdateNotes('## 飞书多维表格同步\n- 使用 rental_key / rental_json\n## 修复问题\n- 输入框\n## 优化体验\n- 报表');
+    final notes = UpdateService.parseUpdateNotes(
+        '## 飞书多维表格同步\n- 使用 rental_key / rental_json\n## 修复问题\n- 输入框\n## 优化体验\n- 报表');
     expect(notes.map((e) => e.type), ['新增', '修复', '优化']);
     expect(notes.first.text, contains('rental_key / rental_json'));
   });

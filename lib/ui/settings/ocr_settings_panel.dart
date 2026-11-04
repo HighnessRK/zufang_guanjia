@@ -1,9 +1,10 @@
 import 'package:flutter/material.dart';
-
+import 'package:flutter_miuix/miuix.dart';
 import '../../core/config/app_config.dart';
 import '../../services/ocr/model_manager.dart';
 import '../../services/ocr/ocr_engine_resolver.dart';
 import '../../services/ocr/soc_info.dart';
+import '../widgets/app_widgets.dart';
 
 class OcrSettingsPanel extends StatefulWidget {
   const OcrSettingsPanel({super.key});
@@ -14,8 +15,9 @@ class OcrSettingsPanel extends StatefulWidget {
 class _OcrSettingsPanelState extends State<OcrSettingsPanel> {
   final models = ModelManager.instance;
   final resolver = OcrEngineResolver.instance;
-  SocInfo soc = const SocInfo('正在读取 SoC…', 0);
+  SocInfo soc = const SocInfo('正在读取…', 0);
   String error = '';
+  bool _details = false;
   @override
   void initState() {
     super.initState();
@@ -32,6 +34,7 @@ class _OcrSettingsPanelState extends State<OcrSettingsPanel> {
   }
 
   Future<void> _run(Future<void> Function() action) async {
+    if (mounted) setState(() => error = '');
     try {
       await action();
     } catch (e) {
@@ -47,101 +50,152 @@ class _OcrSettingsPanelState extends State<OcrSettingsPanel> {
     super.dispose();
   }
 
+  Future<void> _chooseMode() async {
+    final value = await showOptionPicker<String>(context,
+        title: '识别方式',
+        current: AppConfig.instance.ocrMode,
+        summary: '自动模式在本地失败时使用云端；仅本地不上传照片。',
+        options: [
+          const MapEntry('auto', '自动 · 本地优先'),
+          if (models.ready) const MapEntry('local', '仅本地 · 不上传照片'),
+          const MapEntry('cloud', '仅云端')
+        ]);
+    if (value != null && mounted) await _run(() => resolver.setMode(value));
+  }
+
   @override
-  Widget build(BuildContext context) => Card(
-          child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          const Text('OCR 引擎 / Xiaomi-OCR-0',
-              style: TextStyle(fontWeight: FontWeight.bold)),
-          const SizedBox(height: 8),
-          DropdownButtonFormField<String>(
-            key: ValueKey(AppConfig.instance.ocrMode),
-            initialValue: AppConfig.instance.ocrMode,
-            isExpanded: true,
-            itemHeight: null,
-            items: [
-              const DropdownMenuItem(
-                  value: 'auto', child: Text('自动（本地失败回退云端）')),
-              DropdownMenuItem(
-                  value: 'local',
-                  enabled: models.ready,
-                  child: const Text('本地优先（失败时不上传照片）')),
-              const DropdownMenuItem(value: 'cloud', child: Text('仅云端（不加载本地）')),
+  Widget build(BuildContext context) {
+    final c = MiuixTheme.of(context).colors;
+    final status = switch (models.status) {
+      ModelStatus.missing => '未下载',
+      ModelStatus.downloading => '下载中',
+      ModelStatus.paused => '已暂停 · 可继续下载',
+      ModelStatus.verifying => '校验中',
+      ModelStatus.ready => '已就绪',
+      ModelStatus.corrupt => '下载失败 · 请重试',
+    };
+    return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+      const SectionTitle('识别方式'),
+      GlassCard(
+          padding: const EdgeInsets.symmetric(vertical: 4),
+          borderRadius: 20,
+          child: MiuixArrowPreference(
+              title: switch (AppConfig.instance.ocrMode) {
+                'local' => '仅本地',
+                'cloud' => '仅云端',
+                _ => '自动 · 本地优先',
+              },
+              summary: AppConfig.instance.ocrMode == 'local'
+                  ? '照片不上传'
+                  : AppConfig.instance.ocrMode == 'cloud'
+                      ? '使用下方配置的视觉模型'
+                      : '本地不可用时使用云端',
+              onClick: _chooseMode)),
+      const SectionTitle('本地模型'),
+      GlassCard(
+          padding: const EdgeInsets.all(18),
+          borderRadius: 20,
+          child:
+              Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+            Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Expanded(
+                  child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                    const MiuixText('Xiaomi-OCR-0',
+                        fontSize: 16, fontWeight: FontWeight.w600),
+                    const SizedBox(height: 6),
+                    MiuixText(status,
+                        fontSize: 12, color: c.onSurfaceVariantSummary),
+                  ])),
+              StatusTag(models.ready ? '已下载' : '约 1.04 GB', color: c.primary),
+            ]),
+            const SizedBox(height: 14),
+            if (models.busy) ...[
+              LinearProgressIndicator(
+                  value: models.total > 0
+                      ? (models.received / models.total).clamp(0.0, 1.0)
+                      : null),
+              const SizedBox(height: 8),
+              MiuixText(
+                  '${(models.received / 1048576).toStringAsFixed(1)} MB / '
+                  '${models.total > 0 ? '${(models.total / 1048576).toStringAsFixed(1)} MB' : '大小待获取'} · 当前文件',
+                  fontSize: 12,
+                  color: c.onSurfaceVariantSummary),
+              const SizedBox(height: 12),
             ],
-            onChanged: (value) {
-              if (value != null) _run(() => resolver.setMode(value));
-            },
-          ),
-          const SizedBox(height: 8),
-          Text('当前实际引擎：${resolver.actualEngine}'),
-          Text(
-              '主模型 Q8_0 约 0.83 GB + 必需 F16 投影器约 0.2 GB\n状态：${switch (models.status) {
-            ModelStatus.missing => '未下载',
-            ModelStatus.downloading => '下载中',
-            ModelStatus.paused => '已暂停（可恢复）',
-            ModelStatus.verifying => '校验中',
-            ModelStatus.ready => '已下载并校验',
-            ModelStatus.corrupt => '损坏 / 下载失败',
-          }}'),
-          if (models.busy) ...[
-            LinearProgressIndicator(
-                value: models.total > 0
-                    ? (models.received / models.total).clamp(0.0, 1.0)
-                    : null),
-            Text('${(models.received / 1048576).toStringAsFixed(1)} MB / '
-                '${models.total > 0 ? '${(models.total / 1048576).toStringAsFixed(1)} MB' : '大小待获取'}（当前文件）'),
-          ],
-          if (!models.configured)
-            const Text('下载配置无效：需要 HTTPS 地址及完整 SHA-256。云端仍可正常使用。'),
-          const Text('下载来源：xzl01/Xiaomi-OCR-0-GGUF v1.0.0（GitHub 社区转换版）。'
-              '下载约 1.04 GB，分片合并还需要额外空间；请预留至少 2 GB。'),
-          Wrap(spacing: 8, children: [
-            TextButton(
-                onPressed: models.configured && !models.busy && !models.ready
-                    ? () => _run(models.download)
-                    : null,
-                child: const Text('下载 / 恢复')),
-            TextButton(
-                onPressed: models.busy ? () => _run(models.pause) : null,
-                child: const Text('暂停')),
-            TextButton(
-                onPressed: () => _run(models.cancel),
-                child: const Text('取消下载')),
-            TextButton(
-                onPressed: () async {
-                  final yes = await showDialog<bool>(
-                      context: context,
-                      builder: (ctx) => AlertDialog(
-                              title: const Text('删除本地模型？'),
-                              content: const Text('将释放模型文件，识别恢复为自动模式。'),
-                              actions: [
-                                TextButton(
-                                    onPressed: () => Navigator.pop(ctx, false),
-                                    child: const Text('取消')),
-                                TextButton(
-                                    onPressed: () => Navigator.pop(ctx, true),
-                                    child: const Text('删除'))
-                              ]));
-                  if (yes == true) await _run(resolver.deleteModels);
-                },
-                child: const Text('删除模型')),
-          ]),
-          if (models.error.isNotEmpty) Text(models.error),
-          if (error.isNotEmpty) Text(error),
-          if (resolver.warning.isNotEmpty) Text(resolver.warning),
-          const Divider(),
-          const CheckboxListTile(
-              contentPadding: EdgeInsets.zero,
-              title: Text('启用 Snapdragon Hexagon NPU 加速（实验性）'),
-              subtitle: Text('构建选项：当前为 CPU AAR，不支持运行时切换'),
-              value: false,
-              onChanged: null),
-          Text('检测芯片：${soc.description}\n${soc.hint}'),
-          const Text('更换 Hexagon AAR 需要修改 hooks.user_defines 并重新构建；'
-              '本版本始终使用 CPU，不声称 NPU 已生效。社区 GGUF 尚未获小米独立准确度验证。'
-              '首次使用请用清晰单表小图测试，并人工核对所有读数。'
-              '自动模式可能把照片发送到已配置的云端 API；仅本地失败时不会上传。'),
-        ]),
-      ));
+            if (!models.ready)
+              GradientButton(
+                  label: models.busy
+                      ? '暂停下载'
+                      : models.status == ModelStatus.paused
+                          ? '继续下载'
+                          : '下载本地模型',
+                  icon: models.busy
+                      ? Icons.pause_rounded
+                      : Icons.download_rounded,
+                  enabled: models.configured,
+                  onPressed: () =>
+                      _run(models.busy ? models.pause : models.download)),
+            if (models.busy || models.status == ModelStatus.paused)
+              MiuixArrowPreference(
+                  title: '取消下载', onClick: () => _run(models.cancel)),
+            if (models.ready)
+              MiuixArrowPreference(
+                  title: '删除模型',
+                  summary: '释放本地存储空间',
+                  onClick: () async {
+                    final yes = await showAppDialog(context,
+                        title: '删除本地模型？',
+                        summary: '将释放模型文件，识别恢复为自动模式。',
+                        confirmText: '删除',
+                        danger: true);
+                    if (yes == true && mounted) {
+                      await _run(resolver.deleteModels);
+                    }
+                  }),
+            if (!models.ready) ...[
+              const SizedBox(height: 10),
+              MiuixText('请预留 2 GB 空间；本地识别较慢，请核对读数。',
+                  fontSize: 12, color: c.onSurfaceVariantSummary)
+            ],
+            for (final message in [
+              if (!models.configured) '下载配置无效，请使用云端识别。',
+              models.error,
+              error,
+              resolver.warning
+            ])
+              if (message.isNotEmpty)
+                Padding(
+                    padding: const EdgeInsets.only(top: 10),
+                    child: MiuixText(message, fontSize: 12, color: c.error)),
+          ])),
+      const SizedBox(height: 12),
+      GlassCard(
+          padding: const EdgeInsets.symmetric(vertical: 4),
+          borderRadius: 20,
+          child: Column(children: [
+            MiuixArrowPreference(
+                title: '模型与设备信息',
+                summary: _details ? '点击收起' : '来源、运行状态与设备',
+                onClick: () => setState(() => _details = !_details)),
+            if (_details)
+              Padding(
+                  padding: const EdgeInsets.fromLTRB(18, 0, 18, 16),
+                  child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        InfoRow('实际引擎', resolver.actualEngine),
+                        InfoRow('设备芯片', soc.description),
+                        const InfoRow('运行方式', 'CPU · 暂不支持 NPU 加速'),
+                        const SizedBox(height: 8),
+                        MiuixText(
+                            '来源：xzl01/Xiaomi-OCR-0-GGUF v1.0.0（社区转换版）。包含 Q8_0 主模型和 F16 投影器，下载后自动校验。准确度请以人工核对为准。',
+                            fontSize: 12,
+                            height: 1.5,
+                            color: c.onSurfaceVariantSummary),
+                      ])),
+          ])),
+    ]);
+  }
 }

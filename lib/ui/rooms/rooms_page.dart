@@ -272,76 +272,6 @@ class _RoomsPageState extends State<RoomsPage> {
     final bool utilDue = utilOwed > 0;
     final bool utilAccum = !utilDue && room.utilityFee > 0;
 
-    if (useStackedLayout(context)) {
-      final rentStatus = !room.isOccupied
-          ? '空置'
-          : rentOwed == 0
-              ? '房租已缴'
-              : '房租待收 ¥$rentOwed';
-      final utilityStatus = utilDue
-          ? '水电待收 ¥$utilOwed'
-          : utilAccum
-              ? '水电累计 ¥${room.utilityFee}'
-              : '水电已清';
-      return GestureDetector(
-        onLongPress: () => _roomActions(room),
-        child: GlassCard(
-          padding: const EdgeInsets.all(20),
-          borderRadius: 20,
-          onPressed: () => _openDetail(room.roomNo),
-          child:
-              Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Row(children: [
-              Expanded(
-                  child: MiuixText(room.roomNo,
-                      fontSize: 22,
-                      fontWeight: FontWeight.w700,
-                      color: c.onSurface)),
-              Icon(Icons.chevron_right_rounded,
-                  color: c.onSurfaceVariantSummary),
-            ]),
-            const SizedBox(height: 8),
-            MiuixText(room.isOccupied ? room.tenant : '空置中',
-                fontSize: 15, color: c.onSurface),
-            const SizedBox(height: 4),
-            MiuixText(_rentSummary(room),
-                fontSize: 13, color: c.onSurfaceVariantSummary),
-            if (room.roomType.isNotEmpty) ...[
-              const SizedBox(height: 4),
-              MiuixText(room.roomType,
-                  fontSize: 12, color: c.onSurfaceVariantSummary),
-            ],
-            const SizedBox(height: 14),
-            Wrap(spacing: 8, runSpacing: 8, children: [
-              StatusTag(rentStatus,
-                  color: rentOwed > 0 ? c.error : const Color(0xFF34C759)),
-              StatusTag(utilityStatus,
-                  color: utilDue
-                      ? const Color(0xFFFF9500)
-                      : c.onSurfaceVariantSummary),
-            ]),
-            const Padding(
-                padding: EdgeInsets.symmetric(vertical: 14),
-                child: MiuixHorizontalDivider()),
-            Wrap(spacing: 20, runSpacing: 12, children: [
-              MiuixText('押金 ¥${room.deposit}',
-                  fontSize: 12, color: c.onSurfaceVariantSummary),
-              MiuixText('钥匙 ${room.keyCount} 把',
-                  fontSize: 12, color: c.onSurfaceVariantSummary),
-              MiuixText('磁卡 ${room.cardCount} 张',
-                  fontSize: 12, color: c.onSurfaceVariantSummary),
-            ]),
-            if (days != null) ...[
-              const SizedBox(height: 12),
-              MiuixText('${room.expire} 到期 · ${DateUtil.humanDays(days)}',
-                  fontSize: 12,
-                  color: days <= 7 ? c.error : c.onSurfaceVariantSummary),
-            ],
-          ]),
-        ),
-      );
-    }
-
     return GestureDetector(
       // 【v1.1.1】长按房间卡片出「编辑 / 复制」快捷菜单：
       // 编辑 = 进编辑页；复制 = 沿用该房配置（楼层 / 房型 / 租金 / 押金 /
@@ -358,21 +288,64 @@ class _RoomsPageState extends State<RoomsPage> {
               child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Row(children: [
-                      Expanded(
-                          child: MiuixText(room.roomNo,
-                              fontSize: 20, fontWeight: FontWeight.w700)),
-                      Icon(Icons.chevron_right_rounded,
-                          size: 20, color: c.onSurfaceVariantSummary),
-                    ]),
-                    const SizedBox(height: 5),
-                    MiuixText(room.isOccupied ? room.tenant : '空置中',
-                        fontSize: 14, color: c.onSurface),
-                    const SizedBox(height: 4),
-                    MiuixText(
-                        '${_rentSummary(room)}${room.roomType.isEmpty ? '' : ' · ${room.roomType}'}',
-                        fontSize: 12,
-                        color: c.onSurfaceVariantSummary),
+                    LayoutBuilder(builder: (context, constraints) {
+                      final stacked = constraints.maxWidth < 280 ||
+                          useStackedLayout(context);
+                      final identity = Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            MiuixText(room.roomNo,
+                                fontSize: 20, fontWeight: FontWeight.w700),
+                            const SizedBox(height: 5),
+                            MiuixText(room.isOccupied ? room.tenant : '空置中',
+                                fontSize: 14, color: c.onSurface),
+                            const SizedBox(height: 4),
+                            MiuixText(
+                                '${_rentSummary(room)}${room.roomType.isEmpty ? '' : ' · ${room.roomType}'}',
+                                fontSize: 12,
+                                color: c.onSurfaceVariantSummary),
+                          ]);
+                      final expiry = Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            MiuixText('租约到期',
+                                fontSize: 11, color: c.onSurfaceVariantSummary),
+                            const SizedBox(height: 4),
+                            MiuixText(days == null ? '未设置' : room.expire!,
+                                fontSize: 13,
+                                fontWeight: FontWeight.w600,
+                                color: days != null && days <= 7
+                                    ? c.error
+                                    : c.onSurface),
+                            if (days != null) ...[
+                              const SizedBox(height: 3),
+                              MiuixText(DateUtil.humanDays(days),
+                                  fontSize: 11,
+                                  color: days <= 7
+                                      ? c.error
+                                      : c.onSurfaceVariantSummary)
+                            ],
+                          ]);
+                      return Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Row(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Expanded(flex: 3, child: identity),
+                                  const SizedBox(width: 12),
+                                  if (!stacked)
+                                    IntrinsicWidth(child: expiry),
+                                  Icon(Icons.chevron_right_rounded,
+                                      size: 20,
+                                      color: c.onSurfaceVariantSummary),
+                                ]),
+                            if (stacked) ...[
+                              const SizedBox(height: 12),
+                              expiry
+                            ],
+                          ]);
+                    }),
                     const SizedBox(height: 10),
                     Wrap(spacing: 8, runSpacing: 6, children: [
                       StatusTag(
@@ -408,25 +381,6 @@ class _RoomsPageState extends State<RoomsPage> {
                   _MiniInfo('押金', '¥${room.deposit}', c),
                   _MiniInfo('钥匙', '${room.keyCount} 把', c),
                   _MiniInfo('磁卡', '${room.cardCount} 张', c),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.end,
-                      children: <Widget>[
-                        MiuixText('到期',
-                            fontSize: 11, color: c.onSurfaceVariantSummary),
-                        const SizedBox(height: 2),
-                        MiuixText(
-                          days == null
-                              ? '未设置'
-                              : '${room.expire}（${DateUtil.humanDays(days)}）',
-                          fontSize: 12,
-                          color: (days != null && days <= 7)
-                              ? c.error
-                              : c.onSurface,
-                        ),
-                      ],
-                    ),
-                  ),
                 ],
               ),
             ),
