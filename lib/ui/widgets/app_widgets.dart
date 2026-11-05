@@ -432,7 +432,11 @@ class AuroraBackground extends StatelessWidget {
   final Color pink;
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context) => ListenableBuilder(
+      listenable: AppConfig.instance,
+      builder: (context, _) => _buildBackground(context));
+
+  Widget _buildBackground(BuildContext context) {
     final bool dark = Theme.of(context).brightness == Brightness.dark;
     final cfg = AppConfig.instance;
     if (cfg.backgroundStyle == 'none') return const SizedBox.shrink();
@@ -552,11 +556,12 @@ class _TopBarVeilState extends State<_TopBarVeil> {
                     begin: Alignment.topCenter,
                     end: Alignment.bottomCenter,
                     colors: <Color>[
-                      c.surface.withValues(alpha: 0.52),
-                      c.surface.withValues(alpha: 0.34),
+                      c.surface.withValues(alpha: 0.96),
+                      c.surface.withValues(alpha: 0.94),
+                      c.surface.withValues(alpha: 0.86),
                       c.surface.withValues(alpha: 0),
                     ],
-                    stops: const <double>[0, 0.5, 1.0],
+                    stops: const <double>[0, 0.65, 0.78, 1.0],
                   ),
                 ),
               ),
@@ -705,7 +710,7 @@ class _AuroraScaffoldState extends State<AuroraScaffold> {
               content: (EdgeInsets padding) {
                 final Widget body = NotificationListener<ScrollNotification>(
                     onNotification: (notification) {
-                      if (notification.depth == 0 &&
+                      if (notification.depth <= 1 &&
                           notification.metrics.axis == Axis.vertical) {
                         final value = notification.metrics.pixels > 1;
                         if (_scrolled.value != value) _scrolled.value = value;
@@ -723,7 +728,7 @@ class _AuroraScaffoldState extends State<AuroraScaffold> {
                       top: 0,
                       left: 0,
                       right: 0,
-                      height: padding.top,
+                      height: padding.top + 28,
                       child: IgnorePointer(
                           child: ValueListenableBuilder<bool>(
                               valueListenable: _scrolled,

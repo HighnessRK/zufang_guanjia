@@ -31,6 +31,13 @@ class AppChangelog {
 
   /// 全部版本（倒序：最新在最前）
   static const List<ChangelogVersion> versions = <ChangelogVersion>[
+    ChangelogVersion('1.2.8', '2026-11-06', <ChangelogEntry>[
+      ChangelogEntry('修复', '底部导航统一裁切到胶囊轮廓，消除四角虚影和选项背后的球状光晕'),
+      ChangelogEntry('优化', '玻璃折射集中在外缘，保留清晰选项与一整片连续反光'),
+      ChangelogEntry('修复', '直接切换系统明暗主题时，导航玻璃材质同步更新'),
+      ChangelogEntry('修复', '背景光效选择后立即生效，无需重新打开应用'),
+      ChangelogEntry('优化', '顶栏增强文字区域遮蔽和模糊，向正文连续渐隐，避免标题与正文重叠'),
+    ]),
     ChangelogVersion('1.2.7', '2026-11-05', <ChangelogEntry>[
       ChangelogEntry('新增', '本地识别接入 Hexagon NPU，支持的骁龙设备自动加速，并提供 CPU 兼容模式'),
       ChangelogEntry('修复', '修正 NPU 运行库初始化顺序，实际引擎随识别状态更新'),

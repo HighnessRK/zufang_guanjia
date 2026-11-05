@@ -23,7 +23,7 @@ Future<void> main() async {
   await AppConfig.instance.init();
   AppConfig.instance.autoCheckUpdate = false;
   final db = await DatabaseHelper.instance.database;
-  for (final no in ['101', '102', '201']) {
+  for (final no in ['101', '102', '201', '401', '402', '403', '405']) {
     if ((await db.query('rooms', where: 'room_no = ?', whereArgs: [no]))
         .isEmpty) {
       await db.insert(

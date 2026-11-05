@@ -24,6 +24,6 @@ void main() {
   vec4 c = texture(u_input, uv);
   // 平滑渐隐系数；背景图为预乘 alpha，rgb 需同步缩放保持预乘合法
   float localY = (FlutterFragCoord().y - u_fade.x) / max(u_fade.y, 1.0);
-  float m = 1.0 - smoothstep(0.05, 0.96, localY);
+  float m = 1.0 - smoothstep(0.72, 1.0, localY);
   frag_color = vec4(c.rgb * m, c.a * m);
 }

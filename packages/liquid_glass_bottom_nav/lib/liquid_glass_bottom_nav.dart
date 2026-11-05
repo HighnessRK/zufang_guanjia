@@ -356,14 +356,17 @@ class _LiquidGlassNavBarState extends State<LiquidGlassNavBar>
     final inactiveColor =
         widget.inactiveColor ?? Theme.of(context).colorScheme.onSurface;
     final isDark = Theme.of(context).brightness == Brightness.dark;
+    final selectedInk = widget.clearGlass
+        ? Color.lerp(
+            activeColor,
+            isDark ? Colors.white : Colors.black,
+            isDark ? .22 : .16,
+          )!
+        : activeColor;
     final inkShadows = [
       Shadow(
         color: isDark ? const Color(0xF2000000) : const Color(0xF2FFFFFF),
-        blurRadius: 2,
-      ),
-      Shadow(
-        color: isDark ? const Color(0xCC000000) : const Color(0xCCFFFFFF),
-        blurRadius: 5,
+        blurRadius: 0.8,
       ),
     ];
     // Compact centered capsule: cap at maxWidth (Pronto-style floating pill)
@@ -382,16 +385,11 @@ class _LiquidGlassNavBarState extends State<LiquidGlassNavBar>
         child: SizedBox(
           width: barWidth,
           child: Container(
+            clipBehavior: Clip.antiAlias,
             decoration: ShapeDecoration(
               shape: LiquidRoundedRectangle(borderRadius: widget.borderRadius),
               shadows: widget.clearGlass
-                  ? [
-                      BoxShadow(
-                        color: Colors.black.withValues(alpha: 0.12),
-                        blurRadius: 16,
-                        blurStyle: BlurStyle.outer,
-                      ),
-                    ]
+                  ? const []
                   : [
                       BoxShadow(
                         color: Colors.black.withValues(alpha: 0.08),
@@ -655,6 +653,14 @@ class _LiquidGlassNavBarState extends State<LiquidGlassNavBar>
                                               // accent.
                                               color: isDragging
                                                   ? Colors.transparent
+                                                  : widget.clearGlass
+                                                  ? (isDark
+                                                        ? const Color(
+                                                            0xE6272B31,
+                                                          )
+                                                        : const Color(
+                                                            0xEDFFFFFF,
+                                                          ))
                                                   : (isDark
                                                         // 激活气泡略提亮：与大狗记一致，
                                                         // 选中态在胶囊里清晰可辨
@@ -668,7 +674,9 @@ class _LiquidGlassNavBarState extends State<LiquidGlassNavBar>
                                                               )),
                                               borderRadius:
                                                   BorderRadius.circular(
-                                                    widget.borderRadius,
+                                                    widget.clearGlass
+                                                        ? 16
+                                                        : widget.borderRadius,
                                                   ),
                                             ),
                                           ),
@@ -722,57 +730,52 @@ class _LiquidGlassNavBarState extends State<LiquidGlassNavBar>
                                 final item = widget.items[index];
                                 final bool isActive = index == displayIndex;
                                 final color = isActive
-                                    ? activeColor
+                                    ? selectedInk
                                     : inactiveColor;
                                 return SizedBox(
                                   width: itemWidth,
                                   height: widget.height,
-                                  child: _NavInkBackdrop(
-                                    clear: widget.clearGlass,
-                                    dark: isDark,
-                                    child: Column(
-                                      mainAxisAlignment:
-                                          MainAxisAlignment.center,
-                                      children: [
-                                        _iconWithBadge(
-                                          context,
-                                          item,
-                                          IconTheme(
-                                            data: IconThemeData(
-                                              color: color,
-                                              size: widget.iconSize,
-                                              shadows: inkShadows,
-                                            ),
-                                            child:
-                                                item.iconWidget ??
-                                                Icon(
-                                                  item.icon,
-                                                  size: widget.iconSize,
-                                                  color: color,
-                                                ),
+                                  child: Column(
+                                    mainAxisAlignment: MainAxisAlignment.center,
+                                    children: [
+                                      _iconWithBadge(
+                                        context,
+                                        item,
+                                        IconTheme(
+                                          data: IconThemeData(
+                                            color: color,
+                                            size: widget.iconSize,
+                                            shadows: inkShadows,
                                           ),
-                                        ),
-                                        const SizedBox(height: 2),
-                                        Text(
-                                          item.label,
-                                          maxLines: 1,
-                                          overflow: TextOverflow.ellipsis,
-                                          style: Theme.of(context)
-                                              .textTheme
-                                              .bodySmall
-                                              ?.merge(widget.labelStyle)
-                                              .copyWith(
+                                          child:
+                                              item.iconWidget ??
+                                              Icon(
+                                                item.icon,
+                                                size: widget.iconSize,
                                                 color: color,
-                                                shadows: inkShadows,
-                                                fontWeight:
-                                                    widget
-                                                        .labelStyle
-                                                        ?.fontWeight ??
-                                                    FontWeight.w500,
                                               ),
                                         ),
-                                      ],
-                                    ),
+                                      ),
+                                      const SizedBox(height: 2),
+                                      Text(
+                                        item.label,
+                                        maxLines: 1,
+                                        overflow: TextOverflow.ellipsis,
+                                        style: Theme.of(context)
+                                            .textTheme
+                                            .bodySmall
+                                            ?.merge(widget.labelStyle)
+                                            .copyWith(
+                                              color: color,
+                                              shadows: inkShadows,
+                                              fontWeight:
+                                                  widget
+                                                      .labelStyle
+                                                      ?.fontWeight ??
+                                                  FontWeight.w500,
+                                            ),
+                                      ),
+                                    ],
                                   ),
                                 );
                               }),
@@ -795,34 +798,6 @@ class _LiquidGlassNavBarState extends State<LiquidGlassNavBar>
 // ---------------------------------------------------------------------------
 // Legacy fallback — identical visuals to the pre-existing flat white nav bar.
 // ---------------------------------------------------------------------------
-
-/// Local foreground contrast only; the surrounding refractive lens stays clear.
-class _NavInkBackdrop extends StatelessWidget {
-  const _NavInkBackdrop({
-    required this.clear,
-    required this.dark,
-    required this.child,
-  });
-  final bool clear, dark;
-  final Widget child;
-  @override
-  Widget build(BuildContext context) => !clear
-      ? child
-      : DecoratedBox(
-          decoration: BoxDecoration(
-            gradient: RadialGradient(
-              radius: .9,
-              colors: [
-                (dark ? Colors.black : Colors.white).withValues(alpha: .84),
-                (dark ? Colors.black : Colors.white).withValues(alpha: .72),
-                (dark ? Colors.black : Colors.white).withValues(alpha: 0),
-              ],
-              stops: const [0, .48, 1],
-            ),
-          ),
-          child: child,
-        );
-}
 
 class _LegacyNavBar extends StatelessWidget {
   final List<LiquidGlassNavItem> items;
