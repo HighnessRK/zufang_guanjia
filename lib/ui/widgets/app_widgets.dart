@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:ui';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
 import 'package:flutter_miuix/miuix.dart';
 
 import '../../core/config/app_config.dart';
@@ -143,7 +144,7 @@ class SectionTitle extends StatelessWidget {
       child: MiuixText(
         text,
         style: MiuixTheme.of(context).textStyles.subtitle,
-        color: MiuixTheme.of(context).colors.onBackgroundVariant,
+        color: MiuixTheme.of(context).colors.onSurface.withValues(alpha: .62),
       ),
     );
   }
@@ -405,7 +406,11 @@ class StatusTag extends StatelessWidget {
         color: color.withValues(alpha: 0.14),
         borderRadius: BorderRadius.circular(8),
       ),
-      child: MiuixText(text, fontSize: 11, color: color),
+      child: MiuixText(text,
+          fontSize: 11,
+          color: Theme.of(context).brightness == Brightness.light
+              ? Color.lerp(color, Colors.black, .38)
+              : color),
     );
   }
 }
@@ -429,14 +434,37 @@ class AuroraBackground extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final bool dark = Theme.of(context).brightness == Brightness.dark;
+    final cfg = AppConfig.instance;
+    if (cfg.backgroundStyle == 'none') return const SizedBox.shrink();
+    final palette = switch (cfg.backgroundStyle) {
+      'ocean' => [
+          const Color(0xFF36C5F0),
+          const Color(0xFF235CCC),
+          const Color(0xFF6BE6DB)
+        ],
+      'sunset' => [
+          const Color(0xFFFFAE6B),
+          const Color(0xFFCC60A5),
+          const Color(0xFFFF8C99)
+        ],
+      'jade' => [
+          const Color(0xFF4EC7A3),
+          const Color(0xFF468A9B),
+          const Color(0xFFB9E3A8)
+        ],
+      _ => [blue, purple, pink],
+    };
     final double a = dark ? 0.26 : 0.40;
     return IgnorePointer(
       child: Stack(
         children: <Widget>[
-          Positioned(top: -60, left: -70, child: _blob(blue, 320, a)),
-          Positioned(top: 30, right: -90, child: _blob(pink, 300, a * 0.9)),
-          Positioned(top: 320, left: 70, child: _blob(purple, 260, a * 0.75)),
-          Positioned(top: 620, right: -50, child: _blob(blue, 240, a * 0.6)),
+          Positioned(top: -60, left: -70, child: _blob(palette[0], 320, a)),
+          Positioned(
+              top: 30, right: -90, child: _blob(palette[2], 300, a * 0.9)),
+          Positioned(
+              top: 320, left: 70, child: _blob(palette[1], 260, a * 0.75)),
+          Positioned(
+              top: 620, right: -50, child: _blob(palette[0], 240, a * 0.6)),
         ],
       ),
     );
@@ -459,81 +487,63 @@ class AuroraBackground extends StatelessWidget {
   }
 }
 
-/// 顶栏「透明渐变模糊」面纱（页面级，由 AuroraScaffold 铺在正文之上）：
-///   高度 = 顶栏区域（`padding.top`），**不越过顶栏底边**——分界线下方
-/// 的正文永远完全清晰。
-///
-/// 【无分界线的关键 —— 连续渐隐】单个 BackdropFilter 无法做空间渐变的
-/// 高斯模糊；分带近似（多条窄带逐级降 sigma）会在带边界留下淡淡接缝。
-/// 改用「滤镜链」方案：`ImageFilter.compose(outer: 渐隐蒙版着色器,
-/// inner: 高斯模糊)` —— 先把背景整体高斯模糊，再由 shaders/top_bar_fade.frag
-/// 按 y 坐标把模糊结果经 smoothstep 平滑降到全透明（透出底下原图）。
-/// 顶栏底边处模糊恰好归零，全程连续，任何位置无台阶、无接缝。
-///
-/// 渐隐蒙版着色器仅 Impeller 支持（`ImageFilter.isShaderFilterSupported`）；
-/// Skia 等环境静默降级为分带近似。着色器在 main.dart 启动时预加载。
-///
-/// 面纱铺在页面级 Stack（全屏高度）里、由 `padding.top` 直接定位高度，
-/// 不随顶栏槽位被裁剪；IgnorePointer 保证不挡正文手势。顶栏本体（标题 /
-/// 操作按钮）由 MiuixScaffold 在其上层绘制，始终清晰。
+/// Continuous top-bar blur fade, positioned in physical view coordinates.
+/// Each panel owns shader uniforms; only the compiled program is shared.
 class _TopBarVeil extends StatefulWidget {
-  const _TopBarVeil();
+  const _TopBarVeil({required this.blur});
+  final bool blur;
 
   @override
   State<_TopBarVeil> createState() => _TopBarVeilState();
 }
 
 class _TopBarVeilState extends State<_TopBarVeil> {
-  /// 渐隐蒙版着色器：一次加载、全局共用（u_size 由引擎逐次自动绑定，
-  /// 其余 uniform 恒定，多页面同时挂载可安全共享同一实例）
-  static final Future<FragmentShader?> _maskFuture = _loadMask();
+  /// Cache compilation; each visible page gets its own shader instance.
+  static final Future<FragmentProgram?> _maskFuture = _loadMask();
+  FragmentShader? _mask;
 
   /// 启动期预热（main.dart 调用）：触发一次性加载，不阻塞首帧可用性
   static void preload() {
     _maskFuture.then((_) {});
   }
 
-  static Future<FragmentShader?> _loadMask() async {
+  static Future<FragmentProgram?> _loadMask() async {
     if (!ImageFilter.isShaderFilterSupported) return null;
     try {
       final FragmentProgram program =
           await FragmentProgram.fromAsset('shaders/top_bar_fade.frag');
-      final FragmentShader mask = program.fragmentShader();
-      // float 0..1 = u_size（引擎自动绑定）；float 2..3 = u_fade：
-      // 自顶栏 25% 处起渐隐，到顶栏底边（分界线）恰好归零
-      mask.setFloat(2, 0.25);
-      mask.setFloat(3, 1.0);
-      return mask;
+      // Bounds are updated by _RenderTopBlur before each paint.
+      return program;
     } catch (_) {
       return null;
     }
   }
 
   @override
+  void dispose() {
+    _mask?.dispose();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
     final MiuixColors c = MiuixTheme.of(context).colors;
-    return FutureBuilder<FragmentShader?>(
+    return FutureBuilder<FragmentProgram?>(
       future: _maskFuture,
-      builder: (BuildContext context, AsyncSnapshot<FragmentShader?> snap) {
-        final FragmentShader? mask = snap.data;
+      builder: (BuildContext context, AsyncSnapshot<FragmentProgram?> snap) {
+        final FragmentShader? mask = _mask ??= snap.data?.fragmentShader();
         return Stack(
           children: <Widget>[
             // 模糊层：高斯模糊 + 纵向平滑渐隐（Impeller 主路径，无接缝）
-            if (mask != null)
+            if (mask != null && widget.blur)
               Positioned.fill(
-                child: ClipRect(
-                  child: BackdropFilter(
-                    filter: ImageFilter.compose(
-                      outer: ImageFilter.shader(mask),
-                      inner: ImageFilter.blur(sigmaX: 16, sigmaY: 16),
-                    ),
-                    child: const SizedBox.expand(),
-                  ),
-                ),
+                child: _TopBlurMask(
+                    shader: mask,
+                    ratio: MediaQuery.devicePixelRatioOf(context)),
               )
             else
-              // Skia 降级：分带近似（带边界可能有极淡接缝）
-              const Positioned.fill(child: _BandBlurFallback()),
+              // Unsupported backends keep the continuous tonal fade.
+              const SizedBox.shrink(),
             // 界内渐隐色调：顶 52% → 中 34% → 底边 0%，与模糊同步收尾
             Positioned.fill(
               child: DecoratedBox(
@@ -558,40 +568,61 @@ class _TopBarVeilState extends State<_TopBarVeil> {
   }
 }
 
-/// Skia 等不支持运行时滤镜着色器时的降级：4 条窄带逐级降 sigma 近似渐隐
-class _BandBlurFallback extends StatelessWidget {
-  const _BandBlurFallback();
+/// Bind the actual panel bounds rather than fading over the full input texture.
+class _TopBlurMask extends LeafRenderObjectWidget {
+  const _TopBlurMask({required this.shader, required this.ratio});
+  final FragmentShader shader;
+  final double ratio;
+  @override
+  RenderObject createRenderObject(BuildContext context) =>
+      _RenderTopBlur(shader, ratio);
+  @override
+  void updateRenderObject(
+      BuildContext context, covariant _RenderTopBlur object) {
+    object
+      ..shader = shader
+      ..ratio = ratio
+      ..markNeedsPaint();
+  }
+}
 
-  /// 4 条模糊带的 sigma（自上而下逐带减弱，底边处≈0）
-  static const List<double> _bandSigmas = <double>[14, 7, 3, 1.2];
-
-  /// 4 条模糊带的高度占比（合计 100，铺满顶栏区域）
-  static const List<int> _bandFlex = <int>[35, 25, 20, 20];
+class _RenderTopBlur extends RenderBox {
+  _RenderTopBlur(this.shader, this.ratio);
+  FragmentShader shader;
+  double ratio;
+  final _filter = LayerHandle<BackdropFilterLayer>();
+  final _clip = LayerHandle<ClipRectLayer>();
+  @override
+  bool get alwaysNeedsCompositing => true;
+  @override
+  void performLayout() => size = constraints.biggest;
+  @override
+  void paint(PaintingContext context, Offset offset) {
+    final bounds =
+        MatrixUtils.transformRect(getTransformTo(null), Offset.zero & size);
+    shader
+      ..setFloat(2, bounds.top * ratio)
+      ..setFloat(3, bounds.height * ratio);
+    final layer = (_filter.layer ??= BackdropFilterLayer())
+      ..filter = ImageFilter.compose(
+          outer: ImageFilter.shader(shader),
+          inner: ImageFilter.blur(
+              sigmaX: 16, sigmaY: 16, tileMode: TileMode.clamp));
+    _clip.layer = context.pushClipRect(true, offset, Offset.zero & size,
+        (context, offset) => context.pushLayer(layer, (_, __) {}, offset),
+        oldLayer: _clip.layer);
+  }
 
   @override
-  Widget build(BuildContext context) {
-    return Column(
-      children: <Widget>[
-        for (int i = 0; i < _bandSigmas.length; i++)
-          Expanded(
-            flex: _bandFlex[i],
-            child: ClipRect(
-              child: BackdropFilter(
-                filter: ImageFilter.blur(
-                  sigmaX: _bandSigmas[i],
-                  sigmaY: _bandSigmas[i],
-                ),
-                child: const SizedBox.expand(),
-              ),
-            ),
-          ),
-      ],
-    );
+  void dispose() {
+    _filter.layer = null;
+    _clip.layer = null;
+    super.dispose();
   }
 }
 
 /// 应用启动时预热顶栏面纱的渐隐蒙版着色器（main.dart 调用）。
-/// 不支持运行时滤镜着色器的环境（Skia）静默降级为分带近似。
+/// Unsupported backends retain a smooth tonal fade.
 void preloadTopBarVeilShader() => _TopBarVeilState.preload();
 
 /// 全页极光脚手架：底色 + 极光铺满**整屏（含顶栏与状态栏区域）**，
@@ -621,6 +652,7 @@ class AuroraScaffold extends StatefulWidget {
 }
 
 class _AuroraScaffoldState extends State<AuroraScaffold> {
+  final ValueNotifier<bool> _scrolled = ValueNotifier(false);
   @override
   void initState() {
     super.initState();
@@ -629,6 +661,7 @@ class _AuroraScaffoldState extends State<AuroraScaffold> {
 
   @override
   void dispose() {
+    _scrolled.dispose();
     AppConfig.instance.removeListener(_onConfigChanged);
     super.dispose();
   }
@@ -670,7 +703,16 @@ class _AuroraScaffoldState extends State<AuroraScaffold> {
               snackbarHost: widget.snackbarHost,
               floatingActionButton: widget.floatingActionButton,
               content: (EdgeInsets padding) {
-                final Widget body = widget.content(padding);
+                final Widget body = NotificationListener<ScrollNotification>(
+                    onNotification: (notification) {
+                      if (notification.depth == 0 &&
+                          notification.metrics.axis == Axis.vertical) {
+                        final value = notification.metrics.pixels > 1;
+                        if (_scrolled.value != value) _scrolled.value = value;
+                      }
+                      return false;
+                    },
+                    child: widget.content(padding));
                 if (widget.topBar == null) return body;
                 // 面纱高度 = 顶栏区域（padding.top），不越过底边：
                 // 界内渐隐模糊，分界线下方的正文完全清晰
@@ -682,7 +724,11 @@ class _AuroraScaffoldState extends State<AuroraScaffold> {
                       left: 0,
                       right: 0,
                       height: padding.top,
-                      child: const IgnorePointer(child: _TopBarVeil()),
+                      child: IgnorePointer(
+                          child: ValueListenableBuilder<bool>(
+                              valueListenable: _scrolled,
+                              builder: (_, scrolled, __) =>
+                                  _TopBarVeil(blur: scrolled))),
                     ),
                   ],
                 );
@@ -980,6 +1026,99 @@ class GradientButton extends StatelessWidget {
 ///
 /// 通过 [MiuixOverlayDialog] 实现：圆角面板、标题 + 摘要、底部双按钮，
 /// 点击遮罩可关闭，与澎湃OS 系统弹窗质感一致。
+Future<T?> _showAppModal<T>(BuildContext context, WidgetBuilder builder) {
+  final reduce = MediaQuery.disableAnimationsOf(context);
+  return showGeneralDialog<T>(
+    context: context,
+    barrierDismissible: true,
+    barrierLabel: '关闭',
+    barrierColor: Colors.black.withValues(alpha: .28),
+    transitionDuration: Duration(milliseconds: reduce ? 0 : 180),
+    pageBuilder: (ctx, a, b) => builder(ctx),
+    transitionBuilder: (ctx, a, b, child) => FadeTransition(
+        opacity: a,
+        child: ScaleTransition(
+            scale: Tween(begin: .97, end: 1.0).animate(
+                CurvedAnimation(parent: a, curve: Curves.easeOutCubic)),
+            child: child)),
+  );
+}
+
+class AppModalPanel extends StatelessWidget {
+  const AppModalPanel(
+      {super.key,
+      required this.title,
+      this.summary,
+      this.content,
+      this.footer});
+  final String title;
+  final String? summary;
+  final Widget? content, footer;
+  @override
+  Widget build(BuildContext context) {
+    final c = MiuixTheme.of(context).colors;
+    final mq = MediaQuery.of(context);
+    return Dialog(
+        backgroundColor: Colors.transparent,
+        elevation: 0,
+        insetPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 24),
+        child: ConstrainedBox(
+            constraints: BoxConstraints(
+                maxWidth: 420,
+                maxHeight: (mq.size.height -
+                        mq.viewInsets.bottom -
+                        mq.padding.vertical -
+                        56)
+                    .clamp(160.0, 720.0)),
+            child: Container(
+                padding: const EdgeInsets.all(22),
+                decoration: BoxDecoration(
+                    color: c.surface,
+                    borderRadius: BorderRadius.circular(28),
+                    border:
+                        Border.all(color: c.onSurface.withValues(alpha: .10)),
+                    boxShadow: [
+                      BoxShadow(
+                          color: Colors.black.withValues(alpha: .12),
+                          blurRadius: 32,
+                          offset: const Offset(0, 12))
+                    ]),
+                child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      Row(children: [
+                        Expanded(
+                            child: MiuixText(title,
+                                fontSize: 20, fontWeight: FontWeight.w700)),
+                        IconButton(
+                            tooltip: '关闭',
+                            onPressed: () => Navigator.of(context).pop(),
+                            style: IconButton.styleFrom(
+                                backgroundColor:
+                                    c.onSurface.withValues(alpha: .05)),
+                            icon: Icon(Icons.close_rounded,
+                                size: 19, color: c.onSurfaceVariantSummary))
+                      ]),
+                      if (summary?.isNotEmpty == true) ...[
+                        const SizedBox(height: 6),
+                        MiuixText(summary!,
+                            fontSize: 12,
+                            height: 1.5,
+                            color: c.onSurfaceVariantSummary)
+                      ],
+                      if (content != null) ...[
+                        const SizedBox(height: 18),
+                        Flexible(child: SingleChildScrollView(child: content!))
+                      ],
+                      if (footer != null) ...[
+                        const SizedBox(height: 20),
+                        footer!
+                      ],
+                    ]))));
+  }
+}
+
 Future<bool?> showAppDialog(
   BuildContext context, {
   required String title,
@@ -988,220 +1127,127 @@ Future<bool?> showAppDialog(
   String confirmText = '确定',
   String cancelText = '取消',
   bool danger = false,
-}) {
-  return showGeneralDialog<bool>(
-    context: context,
-    barrierDismissible: true,
-    barrierLabel: 'dismiss',
-    barrierColor: Colors.transparent,
-    transitionDuration: const Duration(milliseconds: 220),
-    pageBuilder: (BuildContext ctx, Animation<double> a, Animation<double> b) {
-      final MiuixColors c = MiuixTheme.of(ctx).colors;
-      // 键盘弹出时 MiuixOverlayDialog 面板可用高度收缩，内容列（含按钮行）
-      // 超高会被钳位，按钮会被画到面板圆角背景之外。这里按「屏幕高 − 键盘高
-      // − 顶部安全区 − 面板固定框架（标题/摘要/内边距/按钮行）」动态限制
-      // 内容区高度并允许滚动，保证按钮行始终落在面板背景内。
-      final MediaQueryData mq = MediaQuery.of(ctx);
-      const double kChrome = 240; // 标题+摘要(2行)+内边距+间距+按钮行 保守值
-      final double maxContent =
-          (mq.size.height - mq.viewInsets.bottom - mq.padding.top - kChrome)
-              .clamp(120.0, double.infinity);
-      return MiuixOverlayDialog(
-        show: true,
-        renderInRootScaffold: false,
-        title: title,
-        summary: summary,
-        onDismissRequest: () => Navigator.of(ctx).pop(false),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: <Widget>[
-            if (content != null)
-              ConstrainedBox(
-                constraints: BoxConstraints(maxHeight: maxContent),
-                child: SingleChildScrollView(child: content),
-              ),
-            const SizedBox(height: 18),
-            Row(
-              crossAxisAlignment: CrossAxisAlignment.center,
-              children: <Widget>[
-                Expanded(
-                  child: MiuixTextButton(
-                    cancelText,
+}) =>
+    _showAppModal<bool>(context, (ctx) {
+      final c = MiuixTheme.of(ctx).colors;
+      return AppModalPanel(
+          title: title,
+          summary: summary,
+          content: content,
+          footer: Row(children: [
+            Expanded(
+                child: TextButton(
                     onPressed: () => Navigator.of(ctx).pop(false),
-                  ),
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  // 常规确认 = 蓝色渐变主按钮；危险操作 = 红色实底
-                  child: danger
-                      ? MiuixButton(
-                          onPressed: () => Navigator.of(ctx).pop(true),
-                          colors: MiuixButtonColors(
-                            color: c.error,
-                            disabledColor: c.disabledPrimaryButton,
-                            contentColor: c.onError,
-                            disabledContentColor: c.disabledOnPrimaryButton,
-                          ),
-                          child: MiuixText(confirmText),
-                        )
-                      : GradientButton(
-                          label: confirmText,
-                          onPressed: () => Navigator.of(ctx).pop(true),
-                        ),
-                ),
-              ],
-            ),
-          ],
-        ),
-      );
-    },
-  );
-}
+                    style: TextButton.styleFrom(
+                        backgroundColor: c.onSurface.withValues(alpha: .05),
+                        foregroundColor: c.onSurface,
+                        minimumSize: const Size(44, 48),
+                        shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(14))),
+                    child: Text(cancelText))),
+            const SizedBox(width: 12),
+            Expanded(
+                child: danger
+                    ? FilledButton(
+                        onPressed: () => Navigator.of(ctx).pop(true),
+                        style: FilledButton.styleFrom(
+                            backgroundColor: c.error,
+                            foregroundColor: c.onError,
+                            minimumSize: const Size(44, 48),
+                            shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(14))),
+                        child: Text(confirmText))
+                    : GradientButton(
+                        label: confirmText,
+                        onPressed: () => Navigator.of(ctx).pop(true))),
+          ]));
+    });
 
-/// 通用单选弹窗（HyperOS 风格列表）：点选即返回所选值，取消返回 null。
-/// 计费周期 / 收水收电间隔 / 房型 等所有下拉选择项共用。
+/// Shared choice cards for settings, billing, room actions and image sources.
 Future<T?> showOptionPicker<T>(
   BuildContext context, {
   required String title,
   String? summary,
-  required T current,
+  required T? current,
   required List<MapEntry<T, String>> options,
-}) {
-  return showGeneralDialog<T>(
-    context: context,
-    barrierDismissible: true,
-    barrierLabel: 'dismiss',
-    barrierColor: Colors.transparent,
-    transitionDuration: const Duration(milliseconds: 220),
-    pageBuilder: (BuildContext ctx, Animation<double> a, Animation<double> b) {
-      final MiuixColors c = MiuixTheme.of(ctx).colors;
-      return MiuixOverlayDialog(
-        show: true,
-        renderInRootScaffold: false,
-        title: title,
-        summary: summary,
-        onDismissRequest: () => Navigator.of(ctx).pop(),
-        // MiuixOverlayDialog 只给内容一个 maxHeight 约束、超出直接裁切且不滚动，
-        // 选项一多（楼层下拉 1~20 层 + 自定义共 22 项）最后一项「自定义…」会被
-        // 掉在屏幕外点不到，还会漏出黄黑溢出条。这里给列表一个**确定高度**：
-        // 短列表高度即自然高度、不显多余留白；长列表封顶后自行滚动。
-        // （必须是紧高度：松约束下 Viewport 不会收敛，父 Column 仍会报溢出。）
-        content: SizedBox(
-          height: (options.length * 48.0 + 8).clamp(120.0, 420.0),
-          child: SingleChildScrollView(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: <Widget>[
-                for (int i = 0; i < options.length; i++) ...<Widget>[
-                  if (i != 0) const MiuixHorizontalDivider(),
-                  GestureDetector(
-                    behavior: HitTestBehavior.opaque,
-                    onTap: () => Navigator.of(ctx).pop(options[i].key),
-                    child: Padding(
-                      padding: const EdgeInsets.symmetric(vertical: 13),
-                      child: Row(
-                        children: <Widget>[
-                          Expanded(
-                            child: MiuixText(
-                              options[i].value,
-                              fontSize: 15,
-                              fontWeight: options[i].key == current
-                                  ? FontWeight.w700
-                                  : FontWeight.w400,
-                              color: options[i].key == current
-                                  ? c.primary
-                                  : c.onSurface,
-                            ),
-                          ),
-                          if (options[i].key == current)
-                            Icon(Icons.check_circle_rounded,
-                                size: 19, color: c.primary),
-                        ],
-                      ),
-                    ),
-                  ),
-                ],
-              ],
-            ),
-          ),
-        ),
-      );
-    },
-  );
-}
+  Map<T, IconData> icons = const {},
+}) =>
+    _showAppModal<T>(context, (ctx) {
+      final c = MiuixTheme.of(ctx).colors;
+      return AppModalPanel(
+          title: title,
+          summary: summary,
+          content: Column(mainAxisSize: MainAxisSize.min, children: [
+            for (final option in options)
+              Padding(
+                  padding: const EdgeInsets.only(bottom: 8),
+                  child: Semantics(
+                      button: true,
+                      selected: option.key == current,
+                      child: Material(
+                          color: option.key == current
+                              ? c.primary.withValues(alpha: .12)
+                              : c.onSurface.withValues(alpha: .04),
+                          borderRadius: BorderRadius.circular(16),
+                          child: InkWell(
+                              borderRadius: BorderRadius.circular(16),
+                              onTap: () => Navigator.of(ctx).pop(option.key),
+                              child: Container(
+                                  constraints:
+                                      const BoxConstraints(minHeight: 56),
+                                  padding: const EdgeInsets.symmetric(
+                                      horizontal: 14, vertical: 14),
+                                  child: Row(children: [
+                                    if (icons[option.key] != null) ...[
+                                      Icon(icons[option.key],
+                                          color: c.primary, size: 23),
+                                      const SizedBox(width: 12)
+                                    ],
+                                    Expanded(
+                                        child: MiuixText(option.value,
+                                            fontSize: 14,
+                                            height: 1.35,
+                                            fontWeight: option.key == current
+                                                ? FontWeight.w600
+                                                : FontWeight.w500,
+                                            color: option.key == current
+                                                ? c.primary
+                                                : c.onSurface)),
+                                    const SizedBox(width: 12),
+                                    Icon(
+                                        option.key == current
+                                            ? Icons.check_circle_rounded
+                                            : icons.isEmpty
+                                                ? Icons.circle_outlined
+                                                : Icons.chevron_right_rounded,
+                                        size: 21,
+                                        color: option.key == current
+                                            ? c.primary
+                                            : c.onSurfaceVariantSummary
+                                                .withValues(alpha: .6)),
+                                  ]))))))
+          ]));
+    });
 
-/// 取图来源：拍照 / 系统相册（Android 13+ 走金标联盟照片选择器 Photo Picker）
 enum AppImageSource { camera, gallery }
 
-/// 图片来源选择弹窗（HyperOS 风格列表）：拍照 / 从相册选择。
-///
-/// 【为什么需要】抄表识别过去只有「调相机」一条路，用户想把相册里
-/// 已经拍好的电表照片（或截图）喂给识别就得先另存为新照片；
-/// 金标联盟要求图片选择必须支持系统照片选择器，这里统一入口。
-/// 取消返回 null。
 Future<AppImageSource?> showImageSourceDialog(
   BuildContext context, {
   String title = '选择图片来源',
   String? summary,
-}) {
-  const List<MapEntry<AppImageSource, String>> options =
-      <MapEntry<AppImageSource, String>>[
-    MapEntry<AppImageSource, String>(AppImageSource.camera, '拍照（打开相机）'),
-    MapEntry<AppImageSource, String>(AppImageSource.gallery, '从相册选择（系统照片选择器）'),
-  ];
-  return showGeneralDialog<AppImageSource>(
-    context: context,
-    barrierDismissible: true,
-    barrierLabel: 'dismiss',
-    barrierColor: Colors.transparent,
-    transitionDuration: const Duration(milliseconds: 220),
-    pageBuilder: (BuildContext ctx, Animation<double> a, Animation<double> b) {
-      final MiuixColors c = MiuixTheme.of(ctx).colors;
-      const List<IconData> icons = <IconData>[
-        Icons.photo_camera_rounded,
-        Icons.photo_library_rounded,
-      ];
-      return MiuixOverlayDialog(
-        show: true,
-        renderInRootScaffold: false,
+}) =>
+    showOptionPicker<AppImageSource>(context,
         title: title,
         summary: summary,
-        onDismissRequest: () => Navigator.of(ctx).pop(),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: <Widget>[
-            for (int i = 0; i < options.length; i++) ...<Widget>[
-              if (i != 0) const MiuixHorizontalDivider(),
-              GestureDetector(
-                behavior: HitTestBehavior.opaque,
-                onTap: () => Navigator.of(ctx).pop(options[i].key),
-                child: Padding(
-                  padding: const EdgeInsets.symmetric(vertical: 13),
-                  child: Row(
-                    children: <Widget>[
-                      Icon(icons[i], size: 20, color: c.primary),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: MiuixText(
-                          options[i].value,
-                          fontSize: 15,
-                          fontWeight: FontWeight.w500,
-                          color: c.onSurface,
-                        ),
-                      ),
-                      Icon(Icons.chevron_right_rounded,
-                          size: 20, color: c.onSurfaceVariantSummary),
-                    ],
-                  ),
-                ),
-              ),
-            ],
-          ],
-        ),
-      );
-    },
-  );
-}
+        current: null,
+        options: const [
+          MapEntry(AppImageSource.camera, '拍照'),
+          MapEntry(AppImageSource.gallery, '从相册选择')
+        ],
+        icons: const {
+          AppImageSource.camera: Icons.photo_camera_rounded,
+          AppImageSource.gallery: Icons.photo_library_rounded
+        });
 
 /// HyperOS 风格日期选择弹窗（液态玻璃面板 + 身后极光透底 + miuix 月历）。
 ///

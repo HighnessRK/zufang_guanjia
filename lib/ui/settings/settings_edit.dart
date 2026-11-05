@@ -26,7 +26,7 @@ Future<void> editNumberDialog(
   final bool? ok = await showAppDialog(
     context,
     title: '设置$title',
-    summary: '单位：$unit，修改后立即保存到 info.gwt',
+    summary: '单位：$unit',
     content: AppTextField(
       label: title,
       controller: ctrl,
@@ -52,7 +52,7 @@ Future<void> editIntDialog(
   final bool? ok = await showAppDialog(
     context,
     title: '设置$title',
-    summary: '单位：$unit，修改后立即保存到 info.gwt',
+    summary: '单位：$unit',
     content: AppTextField(
       label: title,
       controller: ctrl,

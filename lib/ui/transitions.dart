@@ -21,8 +21,18 @@ class AppPageRoute<T> extends PageRouteBuilder<T> {
     super.settings,
   }) : super(
           // 快速滑入：入场 240ms / 弹出 200ms，起手即动，收尾干脆
-          transitionDuration: const Duration(milliseconds: 240),
-          reverseTransitionDuration: const Duration(milliseconds: 200),
+          transitionDuration: Duration(
+              milliseconds: AppConfig.instance.motionStyle == 'off'
+                  ? 0
+                  : AppConfig.instance.motionStyle == 'gentle'
+                      ? 280
+                      : 210),
+          reverseTransitionDuration: Duration(
+              milliseconds: AppConfig.instance.motionStyle == 'off'
+                  ? 0
+                  : AppConfig.instance.motionStyle == 'gentle'
+                      ? 240
+                      : 180),
           pageBuilder: (
             BuildContext context,
             Animation<double> animation,
@@ -35,6 +45,7 @@ class AppPageRoute<T> extends PageRouteBuilder<T> {
             Animation<double> secondaryAnimation,
             Widget child,
           ) {
+            if (MediaQuery.disableAnimationsOf(context)) return child;
             // 预测式返回手势驱动期间（含松手收尾）转场值与手指 1:1 线性
             // 映射 → 完全跟手；按钮 / 定时播放才用缓动：入场减速、弹出
             // 加速（easeIn 起手即动，不拖尾）
@@ -46,7 +57,8 @@ class AppPageRoute<T> extends PageRouteBuilder<T> {
                 : (animation.status == AnimationStatus.reverse
                     ? Curves.easeInCubic
                     : Curves.easeOutCubic);
-            final Animation<double> t = animation.drive(CurveTween(curve: curve));
+            final Animation<double> t =
+                animation.drive(CurveTween(curve: curve));
 
             // 纯横向滑入：新页整屏自右向左推入，旧页静止在其下方，
             // 两页始终不透明——干净、实心、无闪烁
@@ -134,8 +146,7 @@ class _AppBackGestureDetector extends StatefulWidget {
 class _AppBackGestureDetectorState extends State<_AppBackGestureDetector>
     with WidgetsBindingObserver {
   /// 本路由当前是否可以认领返回手势：是顶层路由、无内部拦截、动画已稳定
-  bool get _enabled =>
-      widget.route.isCurrent && widget.route.popGestureEnabled;
+  bool get _enabled => widget.route.isCurrent && widget.route.popGestureEnabled;
 
   @override
   void initState() {
@@ -166,7 +177,8 @@ class _AppBackGestureDetectorState extends State<_AppBackGestureDetector>
   @override
   void handleUpdateBackGestureProgress(PredictiveBackEvent backEvent) {
     // 只有已认领的观察者会收到 update（由 binding 过滤）
-    widget.route.handleUpdateBackGestureProgress(progress: 1 - backEvent.progress);
+    widget.route
+        .handleUpdateBackGestureProgress(progress: 1 - backEvent.progress);
   }
 
   @override

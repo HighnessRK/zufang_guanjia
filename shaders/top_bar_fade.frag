@@ -7,7 +7,7 @@
 // Uniforms:
 //   u_size  —— 引擎自动绑定：输入纹理尺寸（勿手动赋值）
 //   u_input —— 引擎自动绑定：inner 滤镜（高斯模糊）输出的背景图
-//   u_fade  —— x = 渐隐起点（0..1，自顶向下）；y = 渐隐终点（1.0 = 底边归零）
+//   u_fade  —— physical top offset and height of this panel
 
 uniform vec2 u_size;
 uniform sampler2D u_input;
@@ -23,6 +23,7 @@ void main() {
 #endif
   vec4 c = texture(u_input, uv);
   // 平滑渐隐系数；背景图为预乘 alpha，rgb 需同步缩放保持预乘合法
-  float m = 1.0 - smoothstep(u_fade.x, u_fade.y, uv.y);
+  float localY = (FlutterFragCoord().y - u_fade.x) / max(u_fade.y, 1.0);
+  float m = 1.0 - smoothstep(0.05, 0.96, localY);
   frag_color = vec4(c.rgb * m, c.a * m);
 }

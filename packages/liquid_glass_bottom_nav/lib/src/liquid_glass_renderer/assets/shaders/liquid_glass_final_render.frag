@@ -5,7 +5,7 @@
 // the liquid glass effect efficiently
 
 #version 460 core
-precision mediump float;
+precision highp float;
 
 #define DEBUG_GEOMETRY 0
 
@@ -61,8 +61,12 @@ void main() {
         fragColor = vec4(0);
         return;
     }
+
+    // The geometry image is premultiplied. Decode its data only after removing
+    // coverage; otherwise anti-aliased edge texels create spurious offsets.
+    geometryData.rgb /= max(geometryData.a, 0.01);
     
-    float maxDisplacement = uThickness * 10.0;
+    float maxDisplacement = uThickness * 3.0;
     vec2 displacement = decodeDisplacement(geometryData, maxDisplacement);
     
     vec2 invUSize = 1.0 / uSize;
@@ -108,17 +112,15 @@ void main() {
         float directional = pow(totalInfluence, 1.5) * uLightIntensity * 3.0;
         float ambient = uAmbientStrength * 0.5;
         
-        float brightness = (directional + ambient) * edgeFactor * thicknessScale * 0.8;
+        float brightness = clamp((directional + ambient) * edgeFactor * thicknessScale * 0.8, 0.0, 0.72);
         
         vec3 bgColor = refractColor.rgb;
         float bgLuminance = dot(bgColor, LUMA_WEIGHTS);
         vec3 highlightColor;
         
-        vec3 saturatedBg = bgColor / max(bgLuminance, 0.001);
-        saturatedBg = mix(bgColor, saturatedBg, 0.8);
-        float colorfulness = length(bgColor - vec3(bgLuminance));
-        float colorMix = clamp(colorfulness * 1.0 + 0.5, 0.5, 1.0);
-        highlightColor = mix(vec3(1.0), saturatedBg, colorMix);
+        // Keep reflected light bounded. Extrapolating an HDR tint through mix
+        // made dark backgrounds produce clipped neon patches along the rim.
+        highlightColor = mix(vec3(1.0), clamp(bgColor, 0.0, 1.0), 0.18);
        
         
         finalColor.rgb = mix(finalColor.rgb, highlightColor, brightness);

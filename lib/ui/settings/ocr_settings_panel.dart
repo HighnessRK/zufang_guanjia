@@ -95,6 +95,27 @@ class _OcrSettingsPanelState extends State<OcrSettingsPanel> {
               onClick: _chooseMode)),
       const SectionTitle('本地模型'),
       GlassCard(
+          padding: const EdgeInsets.symmetric(vertical: 4),
+          child: MiuixArrowPreference(
+              title: '推理加速',
+              summary: AppConfig.instance.ocrAcceleration == 'cpu'
+                  ? 'CPU · 兼容模式'
+                  : '自动 · 优先 Hexagon NPU',
+              onClick: () async {
+                final value = await showOptionPicker<String>(context,
+                    title: '推理加速',
+                    current: AppConfig.instance.ocrAcceleration,
+                    summary: '支持的骁龙设备使用 Hexagon；不可用时回退 CPU。',
+                    options: const [
+                      MapEntry('auto', '自动 · NPU 优先'),
+                      MapEntry('cpu', 'CPU · 兼容模式')
+                    ]);
+                if (value != null && mounted) {
+                  await _run(() => resolver.setAcceleration(value));
+                }
+              })),
+      const SizedBox(height: 12),
+      GlassCard(
           padding: const EdgeInsets.all(18),
           borderRadius: 20,
           child:
@@ -187,7 +208,11 @@ class _OcrSettingsPanelState extends State<OcrSettingsPanel> {
                         InfoRow('实际引擎', resolver.actualEngine),
                         InfoRow('设备芯片', soc.description),
                         InfoRow('NPU 硬件', soc.npu),
-                        const InfoRow('当前推理', 'CPU · NPU 后端未接入'),
+                        InfoRow(
+                            '加速策略',
+                            AppConfig.instance.ocrAcceleration == 'cpu'
+                                ? 'CPU 兼容模式'
+                                : 'Hexagon NPU 优先 · 视觉编码与不支持的算子由 CPU 处理'),
                         const InfoRow('下载来源', ModelCatalog.sourceLabel),
                         const SizedBox(height: 8),
                         MiuixText(

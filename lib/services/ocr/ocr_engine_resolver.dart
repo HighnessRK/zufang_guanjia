@@ -24,7 +24,7 @@ class OcrEngineResolver extends ChangeNotifier {
       : AppConfig.instance.ocrMode == 'cloud'
           ? '云端 API · 待识别'
           : models.ready
-              ? '本地 Xiaomi-OCR-0 · CPU 就绪'
+              ? '本地 Xiaomi-OCR-0 · 就绪'
               : '等待模型就绪';
   set actualEngine(String value) => _actualEngine = value;
   Future<void> restoreStatus() async {
@@ -71,9 +71,12 @@ class OcrEngineResolver extends ChangeNotifier {
         }
         if (AppConfig.instance.ocrMode != 'cloud' && models.ready) {
           try {
-            actualEngine = '本地 Xiaomi-OCR-0 · CPU 识别中';
+            actualEngine = '本地 Xiaomi-OCR-0 · 正在准备引擎';
             notifyListeners();
-            _local ??= LocalOcrEngine(models);
+            _local ??= LocalOcrEngine(models, onBackendChanged: (backend) {
+              actualEngine = '本地 Xiaomi-OCR-0 · $backend 识别中';
+              notifyListeners();
+            });
             final result = localRunner == null
                 ? await _local!.recognize(image, prompt: prompt)
                 : await localRunner(_local! as LocalOcrEngine);
@@ -108,6 +111,16 @@ class OcrEngineResolver extends ChangeNotifier {
         await _local?.dispose();
         _local = null;
         AppConfig.instance.ocrMode = mode;
+        await AppConfig.instance.save();
+        actualEngine = '';
+        notifyListeners();
+      });
+
+  Future<void> setAcceleration(String value) => _exclusive(() async {
+        if (!['auto', 'cpu'].contains(value)) throw ArgumentError.value(value);
+        await _local?.dispose();
+        _local = null;
+        AppConfig.instance.ocrAcceleration = value;
         await AppConfig.instance.save();
         actualEngine = '';
         notifyListeners();

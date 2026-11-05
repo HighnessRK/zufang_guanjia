@@ -57,8 +57,7 @@ class _SettingsPageState extends State<SettingsPage> {
                     MiuixArrowPreference(
                       title: '计费参数',
                       summary: '水电单价 · 缴费周期',
-                      onClick: () =>
-                          _push(const BillingSettingsPage()),
+                      onClick: () => _push(const BillingSettingsPage()),
                     ),
                     const MiuixHorizontalDivider(),
                     MiuixArrowPreference(
@@ -68,10 +67,9 @@ class _SettingsPageState extends State<SettingsPage> {
                     ),
                     const MiuixHorizontalDivider(),
                     MiuixArrowPreference(
-                      title: '外观与显示',
-                      summary: '主题与材质',
-                      onClick: () =>
-                          _push(const AppearanceSettingsPage()),
+                      title: '个性化',
+                      summary: '图标、主题、光效与动效',
+                      onClick: () => _push(const AppearanceSettingsPage()),
                     ),
                     const MiuixHorizontalDivider(),
                     MiuixArrowPreference(

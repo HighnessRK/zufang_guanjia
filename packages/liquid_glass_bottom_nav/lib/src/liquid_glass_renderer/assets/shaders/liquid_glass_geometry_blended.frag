@@ -5,7 +5,7 @@
 // Only needs to be re-run when shape geometry or layout changes
 
 #version 460 core
-precision mediump float;
+precision highp float;
 
 #include <flutter/runtime_effect.glsl>
 #include "sdf.glsl"
@@ -39,8 +39,12 @@ void main() {
         return;
     }
     
-    float dx = dFdx(sd);
-    float dy = dFdy(sd);
+    // Geometry is cached. Central differences avoid derivatives in divergent
+    // edge fragments, which produced an unstable, pitted silhouette on Adreno.
+    float dx = (sceneSDF(fragCoord + vec2(0.5, 0.0), int(uNumShapes), uShapeData, uBlend)
+              - sceneSDF(fragCoord - vec2(0.5, 0.0), int(uNumShapes), uShapeData, uBlend));
+    float dy = (sceneSDF(fragCoord + vec2(0.0, 0.5), int(uNumShapes), uShapeData, uBlend)
+              - sceneSDF(fragCoord - vec2(0.0, 0.5), int(uNumShapes), uShapeData, uBlend));
     
     float n_cos = max(uThickness + sd, 0.0) / uThickness;
     float n_sin = sqrt(max(0.0, 1.0 - n_cos * n_cos));
@@ -56,7 +60,7 @@ void main() {
     float sqrtTerm = sqrt(max(0.0, uThickness * uThickness - x * x));
     float height = mix(sqrtTerm, uThickness, float(sd < -uThickness));
     
-    float baseHeight = uThickness * 8.0;
+    float baseHeight = uThickness * 2.0;
     vec3 incident = vec3(0.0, 0.0, -1.0);
     
     float invRefractiveIndex = 1.0 / uRefractiveIndex;
@@ -64,7 +68,7 @@ void main() {
     float baseRefractLength = (height + baseHeight) / max(0.001, abs(baseRefract.z));
     vec2 displacement = baseRefract.xy * baseRefractLength;
     
-    float maxDisplacement = uThickness * 10.0;
+    float maxDisplacement = uThickness * 3.0;
     
     fragColor = encodeDisplacementData(displacement, maxDisplacement, height, uThickness, foregroundAlpha);
 }

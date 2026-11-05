@@ -21,6 +21,16 @@ class AppConfig extends ChangeNotifier {
 
   /// 全局单例
   static final AppConfig instance = AppConfig._();
+  static const iconStyles = {
+    'aurora': '极光屋',
+    'ocean': '海蓝钥匙',
+    'sunset': '暖阳公寓',
+    'jade': '青竹家',
+    'mono': '极简线条',
+    'lavender': '紫月',
+    'coral': '珊瑚窗',
+    'amber': '琥珀门',
+  };
 
   //========================= 运行期字段 =======================
 
@@ -124,7 +134,8 @@ class AppConfig extends ChangeNotifier {
   }
 
   /// 电费周期摘要（含智能模式说明）
-  String get elecCycleLabel => elecCycle == 0 ? '智能（夏季月付·其余季付）' : cycleLabel(elecCycle);
+  String get elecCycleLabel =>
+      elecCycle == 0 ? '智能（夏季月付·其余季付）' : cycleLabel(elecCycle);
 
   /// 未缴费提醒提前天数（天），默认 7
   int remindDays = 7;
@@ -141,6 +152,7 @@ class AppConfig extends ChangeNotifier {
   /// 内置通知中心已读消息 ID（逗号分隔）
   String noticeReadIds = '';
   String ocrMode = 'auto';
+  String ocrAcceleration = 'auto';
 
   /// Current exclusions apply to historical and future aggregate reports;
   /// underlying room, meter and payment records are never changed.
@@ -150,6 +162,12 @@ class AppConfig extends ChangeNotifier {
   /// 高级材质：true = 液态玻璃（极光底 + 玻璃高光卡片），false = 高斯模糊
   /// （纯色底 + 毛玻璃卡片）
   bool premiumMaterial = true;
+  String themeMode = 'system';
+  String iconStyle = 'aurora';
+  String backgroundStyle = 'aurora';
+  String motionStyle = 'standard';
+  bool haptics = true;
+  bool clearGlass = true;
 
   /// 大模型 API 基地址（OpenAI 兼容，如 https://api.openai.com/v1，
   /// 本地推理可用 http://192.168.x.x:11434/v1）
@@ -277,14 +295,27 @@ class AppConfig extends ChangeNotifier {
     focusEnabled = map['focus_enabled'] != '0';
     noticeReadIds = map['notice_read_ids'] ?? '';
     ocrMode = ['auto', 'local', 'cloud'].contains(map['ocr_mode'])
-        ? map['ocr_mode']! : 'auto';
+        ? map['ocr_mode']!
+        : 'auto';
     try {
       final value = jsonDecode(map['excluded_rooms'] ?? '[]');
-      excludedRooms = value is List ? value.whereType<String>().toSet() : <String>{};
+      excludedRooms =
+          value is List ? value.whereType<String>().toSet() : <String>{};
     } catch (_) {
       excludedRooms = <String>{};
     }
     premiumMaterial = map['premium_material'] != '0';
+    String choice(String key, List<String> values, String fallback) =>
+        values.contains(map[key]) ? map[key]! : fallback;
+    themeMode = choice('theme_mode', ['system', 'light', 'dark'], 'system');
+    iconStyle = choice('icon_style', iconStyles.keys.toList(), 'aurora');
+    backgroundStyle = choice('background_style',
+        ['aurora', 'ocean', 'sunset', 'jade', 'none'], 'aurora');
+    motionStyle =
+        choice('motion_style', ['standard', 'gentle', 'off'], 'standard');
+    ocrAcceleration = choice('ocr_acceleration', ['auto', 'cpu'], 'auto');
+    haptics = map['haptics'] != '0';
+    clearGlass = map['clear_glass'] != '0';
     llmBaseUrl = map['llm_base_url'] ?? '';
     llmApiKey = map['llm_api_key'] ?? '';
     llmModel = map['llm_model'] ?? '';
@@ -333,9 +364,11 @@ class AppConfig extends ChangeNotifier {
     if (file == null) return;
 
     final StringBuffer buf = StringBuffer()
-      ..writeln('#===============================================================')
+      ..writeln(
+          '#===============================================================')
       ..writeln('# 租房管家 全局配置文件 info.gwt（由 APP 自动维护）')
-      ..writeln('#===============================================================')
+      ..writeln(
+          '#===============================================================')
       ..writeln()
       ..writeln('#—— 计费参数 ———')
       ..writeln('water_price=${_trimNum(waterPrice)}')
@@ -369,6 +402,13 @@ class AppConfig extends ChangeNotifier {
       ..writeln('#—— 外观材质 ———')
       ..writeln('# 高级材质 1=液态玻璃 0=高斯模糊')
       ..writeln('premium_material=${premiumMaterial ? 1 : 0}')
+      ..writeln('theme_mode=$themeMode')
+      ..writeln('icon_style=$iconStyle')
+      ..writeln('background_style=$backgroundStyle')
+      ..writeln('motion_style=$motionStyle')
+      ..writeln('haptics=${haptics ? 1 : 0}')
+      ..writeln('clear_glass=${clearGlass ? 1 : 0}')
+      ..writeln('ocr_acceleration=$ocrAcceleration')
       ..writeln()
       ..writeln('#—— 大模型 API（本地填写，不上传）———')
       ..writeln('llm_base_url=$llmBaseUrl')
@@ -442,8 +482,7 @@ class AppConfig extends ChangeNotifier {
     this.summerEnd = summerEnd ?? this.summerEnd;
     this.waterCollectDate = waterCollectDate ?? this.waterCollectDate;
     this.elecCollectDate = elecCollectDate ?? this.elecCollectDate;
-    this.elecDateIndependent =
-        elecDateIndependent ?? this.elecDateIndependent;
+    this.elecDateIndependent = elecDateIndependent ?? this.elecDateIndependent;
     // 【v1.1.3】跟随模式下电日始终等于水日：任一处改动后兜底同步
     if (!this.elecDateIndependent) {
       this.elecCollectDate = this.waterCollectDate;

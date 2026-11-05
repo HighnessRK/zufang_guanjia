@@ -20,9 +20,6 @@ class FeeReportPage extends StatefulWidget {
 }
 
 class _FeeReportPageState extends State<FeeReportPage> {
-  static const Color _kGreen = Color(0xFF34C759);
-  static const Color _kOrange = Color(0xFFFF9500);
-
   DateTime _from = _presetFrom(6);
   DateTime _to = DateTime.now();
 
@@ -297,111 +294,55 @@ class _FeeReportPageState extends State<FeeReportPage> {
     );
   }
 
-  /// 区间汇总：应收 / 实收 / 欠费 三列 + 口径说明
   Widget _buildSummary(MiuixColors c, int months) {
+    final ratio =
+        _totalDue <= 0 ? 0.0 : (_totalPaid / _totalDue).clamp(0.0, 1.0);
     return GlassCard(
-      borderRadius: 20,
-      padding: const EdgeInsets.all(18),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: <Widget>[
-          Wrap(
-              spacing: 8,
-              runSpacing: 8,
-              crossAxisAlignment: WrapCrossAlignment.center,
-              children: [
-                Icon(Icons.insights_rounded, color: c.primary, size: 22),
-                const SizedBox(width: 8),
-                MiuixText('区间实收', fontSize: 14, color: c.onSurfaceSecondary),
-                MiuixText('$months 个账期',
-                    fontSize: 12, color: c.onSurfaceVariantSummary),
-              ]),
-          const SizedBox(height: 14),
+        borderRadius: 24,
+        padding: const EdgeInsets.all(20),
+        child:
+            Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+          Row(children: [
+            Expanded(
+                child: MiuixText('区间实收',
+                    fontSize: 14, color: c.onSurfaceSecondary)),
+            StatusTag('$months 个账期', color: c.primary)
+          ]),
+          const SizedBox(height: 12),
           ReportAmount(_money(_totalPaid),
               fontSize: 36, color: c.primary, bold: true),
-          const SizedBox(height: 16),
+          const SizedBox(height: 18),
+          Row(children: [
+            Expanded(
+                child: MiuixText('收款进度',
+                    fontSize: 12, color: c.onSurfaceVariantSummary)),
+            MiuixText('${(ratio * 100).round()}%',
+                fontSize: 13, fontWeight: FontWeight.w600, color: c.primary)
+          ]),
+          const SizedBox(height: 8),
           ClipRRect(
-              borderRadius: BorderRadius.circular(6),
+              borderRadius: BorderRadius.circular(8),
               child: LinearProgressIndicator(
-                  value:
-                      _totalDue <= 0 ? 0 : (_totalPaid / _totalDue).clamp(0, 1),
+                  value: ratio,
                   minHeight: 7,
                   color: c.primary,
-                  backgroundColor: c.primary.withValues(alpha: 0.10))),
-          const SizedBox(height: 18),
-          Flex(
-            direction:
-                useStackedLayout(context) ? Axis.vertical : Axis.horizontal,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: <Widget>[
-              Flexible(
-                flex: useStackedLayout(context) ? 0 : 1,
-                fit: useStackedLayout(context) ? FlexFit.loose : FlexFit.tight,
-                child: _sumCol(c, '应收', _money(_totalDue), c.onSurface),
-              ),
-              if (useStackedLayout(context)) const SizedBox(height: 12),
-              Flexible(
-                flex: useStackedLayout(context) ? 0 : 1,
-                fit: useStackedLayout(context) ? FlexFit.loose : FlexFit.tight,
-                child: _sumCol(
-                  c,
-                  '欠费',
-                  _money(_totalDebt),
-                  _totalDebt > 0 ? _kOrange : c.onSurfaceVariantSummary,
-                ),
-              ),
-            ],
-          ),
+                  backgroundColor: c.primary.withValues(alpha: .10))),
+          const SizedBox(height: 16),
+          _ReportValueRow('应收合计', _money(_totalDue), color: c.onSurface),
+          _ReportValueRow('未收合计', _money(_totalDebt),
+              color: _debtColor(context)),
           const SizedBox(height: 10),
-          MiuixText(
-            '$_totalCount 笔流水 · 按账期月份统计，非实际到账日期',
-            fontSize: 11.5,
-            color: c.onSurfaceVariantSummary,
-          ),
+          MiuixText('$_totalCount 笔流水 · 按账期月份统计',
+              fontSize: 11, color: c.onSurfaceVariantSummary),
+        ]));
+  }
+
+  Widget _buildTable(MiuixColors c) => Column(children: [
+        for (final row in _rows) ...[
+          FeeCategoryCard(row: row),
+          const SizedBox(height: 12)
         ],
-      ),
-    );
-  }
-
-  Widget _sumCol(MiuixColors c, String label, String value, Color color) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: <Widget>[
-        MiuixText(label, fontSize: 12, color: c.onSurfaceVariantSummary),
-        const SizedBox(height: 4),
-        ReportAmount(value, fontSize: 19, color: color, bold: true),
-      ],
-    );
-  }
-
-  /// 分类明细表：类型 | 应收 | 实收 | 欠费 + 总计行
-  Widget _buildTable(MiuixColors c) {
-    return Column(children: [
-      for (final row in _rows) ...[
-        FeeCategoryCard(row: row),
-        const SizedBox(height: 12),
-      ],
-      GlassCard(
-        borderRadius: 20,
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          children: <Widget>[
-            Row(children: [
-              const Expanded(
-                  child: MiuixText('实收合计',
-                      fontSize: 14, fontWeight: FontWeight.w600)),
-              Expanded(
-                  child: ReportAmount(_money(_totalPaid),
-                      fontSize: 22,
-                      color: _kGreen,
-                      bold: true,
-                      alignment: Alignment.centerRight)),
-            ]),
-          ],
-        ),
-      )
-    ]);
-  }
+      ]);
 
   /// 千分位金额
   static String _money(int v) {
@@ -458,34 +399,59 @@ class FeeCategoryCard extends StatelessWidget {
                       fontSize: 12, color: c.onSurfaceVariantSummary),
                 ])),
           ]),
-          const SizedBox(height: 20),
-          Row(children: [
-            for (final item in [
-              ('应收', row.due, c.onSurface),
-              ('实收', row.paid, const Color(0xFF299C63)),
-              (
-                '待收',
-                row.debt,
-                row.debt > 0
-                    ? const Color(0xFFE69531)
-                    : c.onSurfaceVariantSummary
-              ),
-            ])
-              Expanded(
-                  child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                    MiuixText(item.$1,
-                        fontSize: 12, color: c.onSurfaceVariantSummary),
-                    const SizedBox(height: 6),
-                    Padding(
-                        padding: const EdgeInsets.only(right: 8),
-                        child: ReportAmount(_FeeReportPageState._money(item.$2),
-                            fontSize: 18, color: item.$3, bold: true)),
-                  ])),
-          ]),
+          const SizedBox(height: 14),
+          ClipRRect(
+              borderRadius: BorderRadius.circular(6),
+              child: LinearProgressIndicator(
+                  value:
+                      row.due <= 0 ? 0 : (row.paid / row.due).clamp(0.0, 1.0),
+                  minHeight: 5,
+                  color: color,
+                  backgroundColor: color.withValues(alpha: .10))),
+          const SizedBox(height: 12),
+          _ReportValueRow('应收', _FeeReportPageState._money(row.due),
+              color: c.onSurface),
+          _ReportValueRow('实收', _FeeReportPageState._money(row.paid),
+              color: _paidColor(context)),
+          _ReportValueRow('待收', _FeeReportPageState._money(row.debt),
+              color: row.debt > 0
+                  ? _debtColor(context)
+                  : c.onSurfaceVariantSummary),
         ]));
   }
+}
+
+Color _paidColor(BuildContext context) =>
+    Theme.of(context).brightness == Brightness.dark
+        ? const Color(0xFF6ED99E)
+        : const Color(0xFF187044);
+Color _debtColor(BuildContext context) =>
+    Theme.of(context).brightness == Brightness.dark
+        ? const Color(0xFFFFC269)
+        : const Color(0xFFA95B14);
+
+class _ReportValueRow extends StatelessWidget {
+  const _ReportValueRow(this.label, this.amount, {required this.color});
+  final String label, amount;
+  final Color color;
+  @override
+  Widget build(BuildContext context) => Padding(
+      padding: const EdgeInsets.symmetric(vertical: 9),
+      child: Row(children: [
+        Expanded(
+            flex: 2,
+            child: MiuixText(label,
+                fontSize: 13,
+                color: MiuixTheme.of(context).colors.onSurfaceVariantSummary)),
+        const SizedBox(width: 12),
+        Expanded(
+            flex: 5,
+            child: ReportAmount(amount,
+                fontSize: 18,
+                color: color,
+                bold: true,
+                alignment: Alignment.centerRight))
+      ]));
 }
 
 /// Keep the complete amount on one line, including narrow screens / large fonts.
@@ -514,6 +480,7 @@ class ReportAmount extends StatelessWidget {
               softWrap: false,
               style: TextStyle(
                   fontSize: fontSize,
+                  fontFeatures: const [FontFeature.tabularFigures()],
                   fontWeight: bold ? FontWeight.w700 : FontWeight.w500,
                   color: color)),
         ),

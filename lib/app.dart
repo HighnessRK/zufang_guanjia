@@ -3,6 +3,7 @@ import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_miuix/miuix.dart';
 
 import 'core/constants/app_constants.dart';
+import 'core/config/app_config.dart';
 import 'ui/shell/app_shell.dart';
 import 'ui/widgets/app_editable_field.dart';
 import 'ui/widgets/app_widgets.dart';
@@ -14,68 +15,81 @@ class RentalApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     // MiuixSystemTheme 自动跟随系统明暗模式，提供整套 HyperOS 语义配色
-    return MiuixSystemTheme(
-      child: Builder(
-        builder: (BuildContext context) {
-          final MiuixThemeData theme = MiuixTheme.of(context);
-          return MaterialApp(
-            title: AppConstants.appName,
-            debugShowCheckedModeBanner: false,
-            // 中文本地化（Material 日期选择器等原生控件文案）
-            localizationsDelegates: GlobalMaterialLocalizations.delegates,
-            supportedLocales: const <Locale>[
-              Locale('zh', 'CN'),
-              Locale('en', 'US'),
-            ],
-            locale: const Locale('zh', 'CN'),
-            // 关闭系统默认的 Material 涟漪与配色，统一走 miuix 质感
-            theme: ThemeData(
-              useMaterial3: true,
-              brightness: theme.brightness,
-              // 全局统一字体：小米 MiSans
-              fontFamily: 'MiSans',
-              colorScheme: ColorScheme.fromSeed(
-                seedColor: theme.colors.primary,
-                brightness: theme.brightness,
+    return ListenableBuilder(
+        listenable: AppConfig.instance,
+        builder: (context, _) => MiuixThemeController(
+              colorSchemeMode: switch (AppConfig.instance.themeMode) {
+                'light' => MiuixColorSchemeMode.light,
+                'dark' => MiuixColorSchemeMode.dark,
+                _ => MiuixColorSchemeMode.system,
+              },
+              child: Builder(
+                builder: (BuildContext context) {
+                  final MiuixThemeData theme = MiuixTheme.of(context);
+                  return MaterialApp(
+                    title: AppConstants.appName,
+                    debugShowCheckedModeBanner: false,
+                    // 中文本地化（Material 日期选择器等原生控件文案）
+                    localizationsDelegates:
+                        GlobalMaterialLocalizations.delegates,
+                    supportedLocales: const <Locale>[
+                      Locale('zh', 'CN'),
+                      Locale('en', 'US'),
+                    ],
+                    locale: const Locale('zh', 'CN'),
+                    // 关闭系统默认的 Material 涟漪与配色，统一走 miuix 质感
+                    theme: ThemeData(
+                      useMaterial3: true,
+                      brightness: theme.brightness,
+                      // 全局统一字体：小米 MiSans
+                      fontFamily: 'MiSans',
+                      colorScheme: ColorScheme.fromSeed(
+                        seedColor: theme.colors.primary,
+                        brightness: theme.brightness,
+                      ),
+                      scaffoldBackgroundColor: theme.colors.background,
+                      dialogTheme: DialogThemeData(
+                          shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(26)),
+                          backgroundColor: theme.colors.surface,
+                          elevation: 0),
+                      textButtonTheme: TextButtonThemeData(
+                          style: TextButton.styleFrom(
+                              shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(14)),
+                              minimumSize: const Size(44, 44),
+                              foregroundColor: theme.colors.primary)),
+                      splashFactory: NoSplash.splashFactory,
+                      highlightColor: Colors.transparent,
+                    ),
+                    builder: (BuildContext context, Widget? child) {
+                      // 【关键修复】全局弹窗宿主（置于 Navigator 之上、Directionality 之内）。
+                      //
+                      // showGeneralDialog 推出的对话框路由不处于任何 MiuixScaffold 的
+                      // MiuixPopupScope 作用域内，MiuixOverlayDialog 的内容会注册到
+                      // 进程级 fallback 注册表；若没有宿主渲染它，对话框永远不显示，
+                      // 表现为"设置里的条目点不进去"。挂在这里既让对话框正常显示，
+                      // 又保证它盖在悬浮液态玻璃导航栏之上。
+                      // Popups are hosted above Navigator. They need their own ancestor
+                      // Overlay so selection toolbars appear above, not behind dialogs.
+                      final media = MediaQuery.of(context);
+                      return MediaQuery(
+                          data: media.copyWith(
+                              disableAnimations: media.disableAnimations ||
+                                  AppConfig.instance.motionStyle == 'off'),
+                          child: AppToastLayer(
+                              child: AppClipboardOverlay(
+                            child: SelectionArea(
+                              child: MiuixPopupHost(
+                                child: child ?? const SizedBox.shrink(),
+                              ),
+                            ),
+                          )));
+                    },
+                    home: const AppShell(),
+                  );
+                },
               ),
-              scaffoldBackgroundColor: theme.colors.background,
-              dialogTheme: DialogThemeData(
-                  shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(26)),
-                  backgroundColor: theme.colors.surface,
-                  elevation: 0),
-              textButtonTheme: TextButtonThemeData(
-                  style: TextButton.styleFrom(
-                      shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(14)),
-                      minimumSize: const Size(44, 44),
-                      foregroundColor: theme.colors.primary)),
-              splashFactory: NoSplash.splashFactory,
-              highlightColor: Colors.transparent,
-            ),
-            builder: (BuildContext context, Widget? child) {
-              // 【关键修复】全局弹窗宿主（置于 Navigator 之上、Directionality 之内）。
-              //
-              // showGeneralDialog 推出的对话框路由不处于任何 MiuixScaffold 的
-              // MiuixPopupScope 作用域内，MiuixOverlayDialog 的内容会注册到
-              // 进程级 fallback 注册表；若没有宿主渲染它，对话框永远不显示，
-              // 表现为"设置里的条目点不进去"。挂在这里既让对话框正常显示，
-              // 又保证它盖在悬浮液态玻璃导航栏之上。
-              // Popups are hosted above Navigator. They need their own ancestor
-              // Overlay so selection toolbars appear above, not behind dialogs.
-              return AppToastLayer(
-                  child: AppClipboardOverlay(
-                child: SelectionArea(
-                  child: MiuixPopupHost(
-                    child: child ?? const SizedBox.shrink(),
-                  ),
-                ),
-              ));
-            },
-            home: const AppShell(),
-          );
-        },
-      ),
-    );
+            ));
   }
 }

@@ -1,6 +1,6 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart' show SystemNavigator;
+import 'package:flutter/services.dart' show SystemNavigator, HapticFeedback;
 import 'package:flutter_miuix/miuix.dart';
 import 'package:liquid_glass_bottom_nav/liquid_glass_bottom_nav.dart';
 
@@ -25,7 +25,7 @@ import '../widgets/update_dialog.dart';
 ///    二级页面压栈后底栏依然浮在最上层；
 /// 3. 页面内容底部统一预留边距，保证最后一项不被玻璃导航栏遮挡。
 /// 4. 【金标联盟】
-///    * Tab 切换为「一镜到底」交叉淡化 + 微缩放（旧页淡出、新页放大浮现）；
+///    * Tab 仅绘制当前页，保留页面状态与轻快滑块反馈；
 ///    * 二级页压栈统一走 [AppPageRoute]（缩放淡入 + 手势跟手返回）；
 ///    * Android 返回键 / 预测式返回手势优先弹出当前 Tab 的二级页
 ///      （didPopRoute 回链，见下）；
@@ -71,8 +71,13 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
     WidgetsBinding.instance.addObserver(this);
     // 键盘守卫：跟踪输入框焦点（用于 PopScope 拦截返回、只收键盘）
     FocusManager.instance.addListener(_onFocusChanged);
+    AppConfig.instance.addListener(_onAppearanceChanged);
     // 应用内更新：首帧后静默检查，每次启动发现新版本均提醒。
     WidgetsBinding.instance.addPostFrameCallback((_) => _autoCheckUpdate());
+  }
+
+  void _onAppearanceChanged() {
+    if (mounted) setState(() {});
   }
 
   /// 启动静默检查更新：发现新版本且开启提醒时**每次启动都弹**。
@@ -91,8 +96,7 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
     try {
       final UpdateInfo? info = await UpdateService.checkLatest();
       if (info == null || !mounted) return;
-      if (UpdateService.compareVersion(
-              info.version, AppConstants.appVersion) <=
+      if (UpdateService.compareVersion(info.version, AppConstants.appVersion) <=
           0) {
         return;
       }
@@ -114,6 +118,7 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
   @override
   void dispose() {
     FocusManager.instance.removeListener(_onFocusChanged);
+    AppConfig.instance.removeListener(_onAppearanceChanged);
     WidgetsBinding.instance.removeObserver(this);
     _index.dispose();
     super.dispose();
@@ -148,9 +153,7 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
         id: 'rooms', icon: Icons.meeting_room_rounded, label: '房间'),
     LiquidGlassNavItem(id: 'meter', icon: Icons.speed_rounded, label: '抄表'),
     LiquidGlassNavItem(
-        id: 'collect',
-        icon: Icons.account_balance_wallet_rounded,
-        label: '收款'),
+        id: 'collect', icon: Icons.account_balance_wallet_rounded, label: '收款'),
     LiquidGlassNavItem(
         id: 'settings', icon: Icons.settings_rounded, label: '设置'),
   ];
@@ -192,23 +195,23 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
         }
       },
       child: Scaffold(
-      backgroundColor: Colors.transparent,
-      body: AppShellScope(
-        switchTab: _switchTab,
-        switchTabAndPush: _switchTabAndPush,
-        selectedIndex: _index,
-        // 【返回链路】本 Flutter 版本的 MaterialApp(home:) 不构建 Router，
-        // BackButtonListener（依赖 Router.of）不可用；改走引擎的正统回链：
-        // 返回键 / 预测式返回手势未被页面转场认领时 → handlePopRoute →
-        // didPopRoute（下方实现）→ 先弹当前 Tab 的二级页，根页面再交给系统退出。
-        child: Container(
+        backgroundColor: Colors.transparent,
+        body: AppShellScope(
+          switchTab: _switchTab,
+          switchTabAndPush: _switchTabAndPush,
+          selectedIndex: _index,
+          // 【返回链路】本 Flutter 版本的 MaterialApp(home:) 不构建 Router，
+          // BackButtonListener（依赖 Router.of）不可用；改走引擎的正统回链：
+          // 返回键 / 预测式返回手势未被页面转场认领时 → handlePopRoute →
+          // didPopRoute（下方实现）→ 先弹当前 Tab 的二级页，根页面再交给系统退出。
+          child: Container(
             // 底衬与页面 surface 同色（随明暗模式）：Tab 交叉淡入淡出期间
             // 两个 Tab 都半透明，若底衬是深色渐变会透出「先变黑再跳页」的
             // 观感；用 surface 纯色衬底则全程与页面同色，无黑闪。
             color: c.surface,
             child: Stack(
               children: <Widget>[
-                //=========== 页面内容区（Tab 切换 = 一镜到底交叉变换） ===========
+                //=========== 页面内容区（Tab 独立保活，仅绘制当前页） ===========
                 for (int i = 0; i < _roots.length; i++)
                   Positioned.fill(
                     child: _TabView(
@@ -232,6 +235,8 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
                     selectedIndex: current,
                     onTap: _handleTabTap,
                     iconSize: 23,
+                    clearGlass: AppConfig.instance.clearGlass,
+                    reduceMotion: MediaQuery.disableAnimationsOf(context),
                     liquidActiveBubble: false,
                     dragRainbowBorder: true,
                     // 紧凑悬浮胶囊：高度 60、居中限宽 320、两侧留白，
@@ -240,14 +245,15 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
                     maxWidth: 320,
                     insets: 16,
                     borderRadius: 30,
-                    labelStyle: const TextStyle(fontSize: 10.5),
+                    labelStyle: const TextStyle(
+                        fontSize: 10.5, fontWeight: FontWeight.w600),
                     activeColor: c.primary,
-                    inactiveColor: c.onSurfaceVariantSummary,
+                    inactiveColor: c.onSurface,
                   ),
               ],
             ),
           ),
-      ),
+        ),
       ),
     );
   }
@@ -297,6 +303,7 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
   /// 底部导航点击：点当前已选中的 Tab 时弹回该 Tab 的根页面，
   /// 否则切换 Tab。修复「从首页跳到二级页面后点首页不显示首页」。
   void _handleTabTap(int i) {
+    if (AppConfig.instance.haptics) HapticFeedback.selectionClick();
     if (i == _index.value) {
       final NavigatorState? nav = _navKeys[i].currentState;
       if (nav != null && nav.canPop()) {
@@ -331,38 +338,17 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
   }
 }
 
-/// 单个 Tab 的显隐变换：选中页放大浮现、未选中页缩小淡出（一镜到底），
-/// 隐去的 Tab 不响应点击、退出语义树，但保活页面状态。
+/// Keep independent navigation state, but paint and tick only the active page.
+/// Crossfading two backdrop-filter trees doubled GPU work on each tab switch.
 class _TabView extends StatelessWidget {
   const _TabView({required this.selected, required this.child});
-
   final bool selected;
   final Widget child;
-
   @override
-  Widget build(BuildContext context) {
-    return Semantics(
-      hidden: !selected,
-      child: IgnorePointer(
-        ignoring: !selected,
-        child: AnimatedOpacity(
-          opacity: selected ? 1 : 0,
-          duration: const Duration(milliseconds: 240),
-          curve: Curves.easeOutCubic,
-          child: AnimatedScale(
-            scale: selected ? 1 : 0.97,
-            duration: const Duration(milliseconds: 240),
-            curve: Curves.easeOutCubic,
-            // 【v1.1.2 优化】给每个 Tab 一层光栅边界：交叉淡入淡出的 240ms 里，
-            // 页面的极光背景 + 十几张玻璃卡模糊层本该逐帧重画两遍；有了边界，
-            // 引擎可把整页缓成一张纹理，切换时只做合成（缩放 / 透明度），
-            // 掉帧与发热都明显下降，视觉完全一致。
-            child: RepaintBoundary(child: child),
-          ),
-        ),
-      ),
-    );
-  }
+  Widget build(BuildContext context) => Offstage(
+      offstage: !selected,
+      child:
+          TickerMode(enabled: selected, child: RepaintBoundary(child: child)));
 }
 
 /// 提供给后代页面切换底部 Tab 与感知当前 Tab 的能力。

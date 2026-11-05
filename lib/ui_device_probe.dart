@@ -9,6 +9,17 @@ import 'data/models/receipt.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  final frames = <double>[];
+  WidgetsBinding.instance.addTimingsCallback((timings) {
+    frames.addAll(timings.map(
+        (t) => (t.buildDuration + t.rasterDuration).inMicroseconds / 1000));
+    if (frames.length >= 60) {
+      frames.sort();
+      debugPrint(
+          'UI_FRAME count=${frames.length} p95_ms=${frames[(frames.length * .95).floor()].toStringAsFixed(2)} over16=${frames.where((v) => v > 16.67).length}');
+      frames.clear();
+    }
+  });
   await AppConfig.instance.init();
   AppConfig.instance.autoCheckUpdate = false;
   final db = await DatabaseHelper.instance.database;

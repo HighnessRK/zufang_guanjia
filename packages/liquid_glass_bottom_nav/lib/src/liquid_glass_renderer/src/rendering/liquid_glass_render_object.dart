@@ -220,7 +220,7 @@ abstract class LiquidGlassRenderObject extends RenderProxyBox {
               ..setOffset(_geometryMatteBounds.topLeft * devicePixelRatio)
               ..setSize(_geometryMatteBounds.size * devicePixelRatio);
           })
-          ..setImageSampler(1, geometryImage);
+          ..setImageSampler(1, geometryImage, filterQuality: FilterQuality.low);
         paintLiquidGlass(
           context,
           offset,

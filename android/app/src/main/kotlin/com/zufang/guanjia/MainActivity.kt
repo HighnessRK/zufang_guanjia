@@ -3,6 +3,7 @@ package com.zufang.guanjia
 import android.Manifest
 import android.app.Activity
 import android.content.ContentValues
+import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
@@ -89,6 +90,20 @@ class MainActivity : FlutterActivity() {
 
         methodChannel?.setMethodCallHandler { call, result ->
             when (call.method) {
+                "setAppIcon" -> {
+                    val styles = mapOf("aurora" to "Aurora", "ocean" to "Ocean", "sunset" to "Sunset", "jade" to "Jade", "mono" to "Mono", "lavender" to "Lavender", "coral" to "Coral", "amber" to "Amber")
+                    val selected = styles[call.argument<String>("style")]
+                    if (selected == null) { result.error("ICON", "Unknown icon", null) }
+                    else {
+                        val classPackage = MainActivity::class.java.name.substringBeforeLast('.')
+                        val enable = ComponentName(this, "$classPackage.Launcher$selected")
+                        packageManager.setComponentEnabledSetting(enable, PackageManager.COMPONENT_ENABLED_STATE_ENABLED, PackageManager.DONT_KILL_APP)
+                        for (name in styles.values) if (name != selected) packageManager.setComponentEnabledSetting(
+                            ComponentName(this, "$classPackage.Launcher$name"), PackageManager.COMPONENT_ENABLED_STATE_DISABLED, PackageManager.DONT_KILL_APP)
+                        result.success(null)
+                    }
+                }
+
                 "recognitionActive" -> {
                     val intent = Intent(this, RecognitionService::class.java)
                     if (call.argument<Boolean>("active") == true) {

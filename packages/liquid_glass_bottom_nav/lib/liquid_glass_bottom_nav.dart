@@ -2,9 +2,15 @@ import 'dart:async';
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
+import 'src/clear_glass_capsule.dart';
 import 'src/liquid_glass_renderer/liquid_glass_renderer.dart'
-    show LiquidGlass, LiquidGlassSettings, LiquidRoundedSuperellipse,
-        GlassGlow, GlassGlowLayer, LiquidGlassLayer;
+    show
+        LiquidGlass,
+        LiquidGlassSettings,
+        LiquidRoundedRectangle,
+        GlassGlow,
+        GlassGlowLayer,
+        LiquidGlassLayer;
 import 'src/liquid_glass_renderer/src/liquid_glass_render_scope.dart'
     show LiquidGlassRenderScope;
 
@@ -46,9 +52,9 @@ class LiquidGlassNavItem {
     this.badgeTextColor,
     this.badgeBorderRadius = 999,
   }) : assert(
-          icon != null || iconWidget != null,
-          'LiquidGlassNavItem requires either icon or iconWidget.',
-        );
+         icon != null || iconWidget != null,
+         'LiquidGlassNavItem requires either icon or iconWidget.',
+       );
 }
 
 /// Small pill/circle badge overlaid on a nav item's icon to show [badgeCount].
@@ -94,7 +100,11 @@ class _NavBadge extends StatelessWidget {
 /// Overlays [icon] with a [_NavBadge] when [item.badgeCount] is set.
 /// Shared by both [_LiquidGlassNavBarState] and [_LegacyNavBar] so the badge
 /// looks identical on Impeller and legacy fallback devices.
-Widget _iconWithBadge(BuildContext context, LiquidGlassNavItem item, Widget icon) {
+Widget _iconWithBadge(
+  BuildContext context,
+  LiquidGlassNavItem item,
+  Widget icon,
+) {
   final count = item.badgeCount;
   if (count == null || count <= 0) return icon;
 
@@ -127,7 +137,7 @@ class LiquidGlassNavBar extends StatefulWidget {
   final List<LiquidGlassNavItem> items;
   final int selectedIndex;
   final ValueChanged<int> onTap;
-  
+
   /// Whether the device supports Impeller rendering. Defaults to true.
   final bool impellerSupported;
 
@@ -188,6 +198,8 @@ class LiquidGlassNavBar extends StatefulWidget {
   /// holding a tab on low-end Android hardware, set this to `false` to fall
   /// back to the plain tinted container.
   final bool liquidActiveBubble;
+  final bool clearGlass;
+  final bool reduceMotion;
 
   /// Vertical space the floating nav occupies above the system bottom inset.
   /// Tab screens with scrollable content should add this as bottom padding.
@@ -210,6 +222,8 @@ class LiquidGlassNavBar extends StatefulWidget {
     this.borderRadius = 34.0,
     this.dragRainbowBorder = false,
     this.liquidActiveBubble = true,
+    this.clearGlass = true,
+    this.reduceMotion = false,
   });
 
   @override
@@ -269,17 +283,18 @@ class _RainbowRingPainter extends CustomPainter {
 
     // Glossy specular highlight, like the bright spot on a glass sphere.
     final highlightPaint = Paint()
-      ..shader = RadialGradient(
-        colors: [
-          Colors.white.withValues(alpha: 0.5),
-          Colors.white.withValues(alpha: 0.0),
-        ],
-      ).createShader(
-        Rect.fromCircle(
-          center: Offset(size.width * 0.28, size.height * 0.22),
-          radius: size.shortestSide * 0.35,
-        ),
-      );
+      ..shader =
+          RadialGradient(
+            colors: [
+              Colors.white.withValues(alpha: 0.5),
+              Colors.white.withValues(alpha: 0.0),
+            ],
+          ).createShader(
+            Rect.fromCircle(
+              center: Offset(size.width * 0.28, size.height * 0.22),
+              radius: size.shortestSide * 0.35,
+            ),
+          );
     canvas.drawRRect(rrect, highlightPaint);
   }
 
@@ -333,10 +348,24 @@ class _LiquidGlassNavBarState extends State<LiquidGlassNavBar>
 
     final bottomPadding = MediaQuery.of(context).padding.bottom;
     final screenWidth = MediaQuery.of(context).size.width;
-    final horizontalMargin = screenWidth < 360 ? widget.insets / 2 : widget.insets;
-    final activeColor = widget.activeColor ?? Theme.of(context).colorScheme.primary;
-    final inactiveColor = widget.inactiveColor ?? Theme.of(context).colorScheme.onSurface;
+    final horizontalMargin = screenWidth < 360
+        ? widget.insets / 2
+        : widget.insets;
+    final activeColor =
+        widget.activeColor ?? Theme.of(context).colorScheme.primary;
+    final inactiveColor =
+        widget.inactiveColor ?? Theme.of(context).colorScheme.onSurface;
     final isDark = Theme.of(context).brightness == Brightness.dark;
+    final inkShadows = [
+      Shadow(
+        color: isDark ? const Color(0xF2000000) : const Color(0xF2FFFFFF),
+        blurRadius: 2,
+      ),
+      Shadow(
+        color: isDark ? const Color(0xCC000000) : const Color(0xCCFFFFFF),
+        blurRadius: 5,
+      ),
+    ];
     // Compact centered capsule: cap at maxWidth (Pronto-style floating pill)
     // while never exceeding the screen minus the side insets.
     final availableWidth = screenWidth - horizontalMargin * 2;
@@ -353,317 +382,411 @@ class _LiquidGlassNavBarState extends State<LiquidGlassNavBar>
         child: SizedBox(
           width: barWidth,
           child: Container(
-        decoration: ShapeDecoration(
-          shape: LiquidRoundedSuperellipse(borderRadius: widget.borderRadius),
-          shadows: [
-            BoxShadow(
-              color: Colors.black.withValues(alpha: 0.08),
-              blurRadius: 0,
-              spreadRadius: 1,
+            decoration: ShapeDecoration(
+              shape: LiquidRoundedRectangle(borderRadius: widget.borderRadius),
+              shadows: widget.clearGlass
+                  ? [
+                      BoxShadow(
+                        color: Colors.black.withValues(alpha: 0.12),
+                        blurRadius: 16,
+                        blurStyle: BlurStyle.outer,
+                      ),
+                    ]
+                  : [
+                      BoxShadow(
+                        color: Colors.black.withValues(alpha: 0.08),
+                        blurRadius: 0,
+                        spreadRadius: 1,
+                      ),
+                      BoxShadow(
+                        // 抬升投影：胶囊悬浮感（对齐大狗记 Pronto 的柔和深影）
+                        color: Colors.black.withValues(alpha: 0.20),
+                        blurRadius: 26,
+                        offset: const Offset(0, 10),
+                      ),
+                    ],
             ),
-            BoxShadow(
-              // 抬升投影：胶囊悬浮感（对齐大狗记 Pronto 的柔和深影）
-              color: Colors.black.withValues(alpha: 0.20),
-              blurRadius: 26,
-              offset: const Offset(0, 10),
-            ),
-          ],
-        ),
-        child: Stack(
-          clipBehavior: Clip.none,
-          children: [
-            Positioned.fill(
-              child: Container(
-                foregroundDecoration: ShapeDecoration(
-                  shape: LiquidRoundedSuperellipse(
-                    borderRadius: widget.borderRadius,
-                    side: BorderSide(
-                      // 白色亮边定义胶囊轮廓：深色模式下 0.08 几乎不可见
-                      // （质感发闷），提至 0.20 让玻璃边缘清晰「立起来」；
-                      // 浅色模式维持强白边（mirrors iOS behaviour）。
-                      color: isDark
-                          ? Colors.white.withValues(alpha: 0.20)
-                          : Colors.white.withValues(alpha: 0.55),
-                      width: 1.0,
+            child: Stack(
+              clipBehavior: Clip.none,
+              children: [
+                Positioned.fill(
+                  child: Container(
+                    foregroundDecoration: ShapeDecoration(
+                      shape: LiquidRoundedRectangle(
+                        borderRadius: widget.borderRadius,
+                        side: BorderSide(
+                          // 白色亮边定义胶囊轮廓：深色模式下 0.08 几乎不可见
+                          // （质感发闷），提至 0.20 让玻璃边缘清晰「立起来」；
+                          // 浅色模式维持强白边（mirrors iOS behaviour）。
+                          color: isDark
+                              ? Colors.white.withValues(alpha: 0.20)
+                              : Colors.white.withValues(alpha: 0.55),
+                          width: 1.0,
+                        ),
+                      ),
                     ),
+                    child: widget.clearGlass
+                        ? const ClearGlassCapsule()
+                        : LiquidGlass.withOwnLayer(
+                            shape: LiquidRoundedRectangle(
+                              borderRadius: widget.borderRadius,
+                            ),
+                            settings: LiquidGlassSettings(
+                              // 深色模式：白染 0.04 几乎无玻璃感、highlight 几乎熄灭，
+                              // 胶囊像一块闷黑污渍；提亮染色 / 高光 / 环境光，配合
+                              // 亮边与投影，达到大狗记 Pronto 那种通透「浮起」的质感。
+                              // Light mode: high white tint for vibrancy, blur kept at 1
+                              // so the capsule reads as clean white without any fogging.
+                              glassColor: isDark
+                                  ? Colors.white.withValues(
+                                      alpha: widget.clearGlass ? 0.0 : 0.10,
+                                    )
+                                  : Colors.white.withValues(
+                                      alpha: widget.clearGlass ? 0.0 : 0.42,
+                                    ),
+                              thickness: widget.clearGlass ? 24 : 20,
+                              refractiveIndex: widget.clearGlass ? 1.45 : 1.16,
+                              chromaticAberration: 0.004,
+                              blur: widget.clearGlass ? 0 : 12,
+                              saturation: 1.04,
+                              lightIntensity: isDark ? 0.85 : 0.95,
+                              ambientStrength: isDark ? 0.08 : 0.06,
+                            ),
+                            child: const SizedBox.expand(),
+                          ),
                   ),
                 ),
-                child: LiquidGlass.withOwnLayer(
-                  shape: LiquidRoundedSuperellipse(borderRadius: widget.borderRadius),
-                  settings: LiquidGlassSettings(
-                    // 深色模式：白染 0.04 几乎无玻璃感、highlight 几乎熄灭，
-                    // 胶囊像一块闷黑污渍；提亮染色 / 高光 / 环境光，配合
-                    // 亮边与投影，达到大狗记 Pronto 那种通透「浮起」的质感。
-                    // Light mode: high white tint for vibrancy, blur kept at 1
-                    // so the capsule reads as clean white without any fogging.
-                    glassColor: isDark
-                        ? Colors.white.withValues(alpha: 0.08)
-                        : Colors.white.withValues(alpha: 0.35),
-                    thickness: 22,
-                    blur: 12,
-                    saturation: 1.16,
-                    lightIntensity: isDark ? 0.85 : 0.95,
-                    ambientStrength: isDark ? 0.32 : 0.2,
-                  ),
-                  child: const SizedBox.expand(),
-                ),
-              ),
-            ),
-            SizedBox(
-              height: widget.height,
-              child: LayoutBuilder(
-                builder: (context, constraints) {
-                  final itemWidth = constraints.maxWidth / widget.items.length;
-                  final displayIndex = _dragIndex ?? widget.selectedIndex;
-                  final isDragging = _dragIndex != null;
+                SizedBox(
+                  height: widget.height,
+                  child: LayoutBuilder(
+                    builder: (context, constraints) {
+                      final itemWidth =
+                          constraints.maxWidth / widget.items.length;
+                      final displayIndex = _dragIndex ?? widget.selectedIndex;
+                      final isDragging = _dragIndex != null;
 
-                  return GestureDetector(
-                    behavior: HitTestBehavior.opaque,
-                    onTapUp: (details) {
-                      widget.onTap(
-                        _indexFromX(details.localPosition.dx, itemWidth),
-                      );
-                    },
-                    onHorizontalDragStart: (details) {
-                      final x = details.localPosition.dx;
-                      final index = _indexFromX(x, itemWidth);
-                      setState(() {
-                        _dragIndex = index;
-                        _dragX = x;
-                      });
-                    },
-                    onHorizontalDragUpdate: (details) {
-                      final x = details.localPosition.dx;
-                      final index = _indexFromX(x, itemWidth);
-                      setState(() {
-                        _dragIndex = index;
-                        _dragX = x;
-                      });
+                      return GestureDetector(
+                        behavior: HitTestBehavior.opaque,
+                        onTapUp: (details) {
+                          widget.onTap(
+                            _indexFromX(details.localPosition.dx, itemWidth),
+                          );
+                        },
+                        onHorizontalDragStart: (details) {
+                          final x = details.localPosition.dx;
+                          final index = _indexFromX(x, itemWidth);
+                          setState(() {
+                            _dragIndex = index;
+                            _dragX = x;
+                          });
+                        },
+                        onHorizontalDragUpdate: (details) {
+                          final x = details.localPosition.dx;
+                          final index = _indexFromX(x, itemWidth);
+                          setState(() {
+                            _dragIndex = index;
+                            _dragX = x;
+                          });
 
-                      // Direction-independent: only how far the finger moved
-                      // this frame drives the squish, so it bounces the same
-                      // regardless of which way you slide.
-                      final targetSquish = (details.delta.dx.abs() / 6.0).clamp(0.0, 1.0);
-                      _bounceCtrl.animateTo(
-                        targetSquish,
-                        duration: const Duration(milliseconds: 90),
-                        curve: Curves.easeOut,
-                      );
+                          // Direction-independent: only how far the finger moved
+                          // this frame drives the squish, so it bounces the same
+                          // regardless of which way you slide.
+                          final targetSquish = (details.delta.dx.abs() / 6.0)
+                              .clamp(0.0, 1.0);
+                          _bounceCtrl.animateTo(
+                            targetSquish,
+                            duration: const Duration(milliseconds: 90),
+                            curve: Curves.easeOut,
+                          );
 
-                      // Spring back to neutral once the finger settles.
-                      _bounceDecayTimer?.cancel();
-                      _bounceDecayTimer = Timer(const Duration(milliseconds: 80), () {
-                        if (mounted) {
+                          // Spring back to neutral once the finger settles.
+                          _bounceDecayTimer?.cancel();
+                          _bounceDecayTimer = Timer(
+                            const Duration(milliseconds: 80),
+                            () {
+                              if (mounted) {
+                                _bounceCtrl.animateTo(
+                                  0.0,
+                                  duration: const Duration(milliseconds: 260),
+                                  curve: Curves.easeOutBack,
+                                );
+                              }
+                            },
+                          );
+                        },
+                        onHorizontalDragEnd: (_) {
+                          if (_dragIndex != null) widget.onTap(_dragIndex!);
+                          setState(() {
+                            _dragIndex = null;
+                            _dragX = null;
+                          });
+                          _bounceDecayTimer?.cancel();
                           _bounceCtrl.animateTo(
                             0.0,
                             duration: const Duration(milliseconds: 260),
                             curve: Curves.easeOutBack,
                           );
-                        }
-                      });
-                    },
-                    onHorizontalDragEnd: (_) {
-                      if (_dragIndex != null) widget.onTap(_dragIndex!);
-                      setState(() {
-                        _dragIndex = null;
-                        _dragX = null;
-                      });
-                      _bounceDecayTimer?.cancel();
-                      _bounceCtrl.animateTo(
-                        0.0,
-                        duration: const Duration(milliseconds: 260),
-                        curve: Curves.easeOutBack,
-                      );
-                    },
-                    onHorizontalDragCancel: () {
-                      setState(() {
-                        _dragIndex = null;
-                        _dragX = null;
-                      });
-                      _bounceDecayTimer?.cancel();
-                      _bounceCtrl.animateTo(
-                        0.0,
-                        duration: const Duration(milliseconds: 260),
-                        curve: Curves.easeOutBack,
-                      );
-                    },
-                    child: Stack(
-                      clipBehavior: Clip.none,
-                      children: [
-                        Builder(
-                          builder: (context) {
-                            // Normal state: Original stadium pill capsule
-                            final normalWidth = itemWidth - 8; 
-                            final normalHeight =
-                                widget.height - 10.0; // Fills most of the capsule
-                            final normalTop =
-                                (widget.height - normalHeight) / 2;
-                            final normalLeft = displayIndex * itemWidth + 4.0;
+                        },
+                        onHorizontalDragCancel: () {
+                          setState(() {
+                            _dragIndex = null;
+                            _dragX = null;
+                          });
+                          _bounceDecayTimer?.cancel();
+                          _bounceCtrl.animateTo(
+                            0.0,
+                            duration: const Duration(milliseconds: 260),
+                            curve: Curves.easeOutBack,
+                          );
+                        },
+                        child: Stack(
+                          clipBehavior: Clip.none,
+                          children: [
+                            Builder(
+                              builder: (context) {
+                                // Normal state: Original stadium pill capsule
+                                final normalWidth = itemWidth - 8;
+                                final normalHeight =
+                                    widget.height -
+                                    10.0; // Fills most of the capsule
+                                final normalTop =
+                                    (widget.height - normalHeight) / 2;
+                                final normalLeft =
+                                    displayIndex * itemWidth + 4.0;
 
-                            // Held state: Enlarged capsule (maintains horizontal pill shape)
-                            final heldWidth = itemWidth + 16.0; 
-                            final heldHeight = widget.height +
-                                12.0; // Overlaps top and bottom of the bar
-                            final heldTop = (widget.height - heldHeight) / 2;
-                            
-                            // Track exact finger position clamped within the bar bounds
-                            final exactCenterX = _dragX?.clamp(0.0, constraints.maxWidth) 
-                                ?? (displayIndex * itemWidth + itemWidth / 2);
-                            final heldLeft = exactCenterX - (heldWidth / 2);
+                                // Held state: Enlarged capsule (maintains horizontal pill shape)
+                                final heldWidth = itemWidth + 16.0;
+                                final heldHeight =
+                                    widget.height +
+                                    12.0; // Overlaps top and bottom of the bar
+                                final heldTop =
+                                    (widget.height - heldHeight) / 2;
 
-                            return AnimatedPositioned(
-                              duration: Duration(
-                                // Shorter duration for position changes when dragging so it tightly tracks the finger
-                                milliseconds: isDragging ? 50 : 400,
-                              ),
-                              curve: isDragging ? Curves.easeOut : Curves.elasticOut,
-                              left: isDragging ? heldLeft : normalLeft,
-                              width: isDragging ? heldWidth : normalWidth,
-                              top: isDragging ? heldTop : normalTop,
-                              height: isDragging ? heldHeight : normalHeight,
-                              child: AnimatedBuilder(
-                                animation: _bounceCtrl,
-                                builder: (context, child) {
-                                  final scaleY = 1.0 - _bounceCtrl.value * 0.12;
-                                  return Transform(
-                                    alignment: Alignment.center,
-                                    transform: Matrix4.diagonal3Values(1.0, scaleY, 1.0),
-                                    child: child,
-                                  );
-                                },
-                                child: Stack(
-                                  clipBehavior: Clip.none,
-                                  children: [
-                                    if (widget.liquidActiveBubble && isDragging)
-                                      // Real glass shape, only while held — its position/size
-                                      // animate every drag frame, so the shader recomputes
-                                      // every one of those frames. See the doc comment on
-                                      // [LiquidGlassNavBar.liquidActiveBubble]. The resting
-                                      // (non-dragging) active bubble always stays the plain
-                                      // tinted container below.
-                                      LiquidGlass.withOwnLayer(
-                                        shape: LiquidRoundedSuperellipse(
-                                          borderRadius: widget.borderRadius,
+                                // Track exact finger position clamped within the bar bounds
+                                final exactCenterX =
+                                    _dragX?.clamp(0.0, constraints.maxWidth) ??
+                                    (displayIndex * itemWidth + itemWidth / 2);
+                                final heldLeft = exactCenterX - (heldWidth / 2);
+
+                                return AnimatedPositioned(
+                                  duration: Duration(
+                                    // Shorter duration for position changes when dragging so it tightly tracks the finger
+                                    milliseconds: widget.reduceMotion
+                                        ? 0
+                                        : isDragging
+                                        ? 50
+                                        : 200,
+                                  ),
+                                  curve: isDragging
+                                      ? Curves.easeOut
+                                      : Curves.easeOutCubic,
+                                  left: isDragging ? heldLeft : normalLeft,
+                                  width: isDragging ? heldWidth : normalWidth,
+                                  top: isDragging ? heldTop : normalTop,
+                                  height: isDragging
+                                      ? heldHeight
+                                      : normalHeight,
+                                  child: AnimatedBuilder(
+                                    animation: _bounceCtrl,
+                                    builder: (context, child) {
+                                      final scaleY =
+                                          1.0 - _bounceCtrl.value * 0.12;
+                                      return Transform(
+                                        alignment: Alignment.center,
+                                        transform: Matrix4.diagonal3Values(
+                                          1.0,
+                                          scaleY,
+                                          1.0,
                                         ),
-                                        settings: LiquidGlassSettings(
-                                          glassColor: Colors.transparent,
-                                          thickness: 22,
-                                          blur: 12,
-                                          saturation: 1.16,
-                                          // 拖动中的气泡与静止胶囊同款提亮
-                                          lightIntensity: isDark ? 0.85 : 0.95,
-                                          ambientStrength:
-                                              isDark ? 0.32 : 0.2,
-                                        ),
-                                        child: const SizedBox.expand(),
-                                      )
-                                    else
-                                      AnimatedContainer(
-                                        duration: Duration(
-                                          milliseconds: isDragging ? 150 : 400,
-                                        ),
-                                        curve: isDragging ? Curves.easeOut : Curves.elasticOut,
-                                        decoration: BoxDecoration(
-                                          // No tint while held — the light gray stroke (or the
-                                          // rainbow sheen, if opted into) is the only drag-state
-                                          // accent.
-                                          color: isDragging
-                                              ? Colors.transparent
-                                              : (isDark
-                                                  // 激活气泡略提亮：与大狗记一致，
-                                                  // 选中态在胶囊里清晰可辨
-                                                  ? Colors.white.withValues(alpha: 0.12)
-                                                  : activeColor.withValues(alpha: 0.15)),
-                                          borderRadius: BorderRadius.circular(widget.borderRadius),
-                                        ),
-                                      ),
-                                    // Stroke overlay lives outside the bubble-content branch
-                                    // above so it shows the same way whether the bubble itself
-                                    // is the real LiquidGlass shape or the plain tinted
-                                    // container.
-                                    if (isDragging && !widget.dragRainbowBorder)
-                                      Positioned.fill(
-                                        child: IgnorePointer(
-                                          child: DecoratedBox(
+                                        child: child,
+                                      );
+                                    },
+                                    child: Stack(
+                                      clipBehavior: Clip.none,
+                                      children: [
+                                        if (widget.liquidActiveBubble &&
+                                            isDragging)
+                                          // Real glass shape, only while held — its position/size
+                                          // animate every drag frame, so the shader recomputes
+                                          // every one of those frames. See the doc comment on
+                                          // [LiquidGlassNavBar.liquidActiveBubble]. The resting
+                                          // (non-dragging) active bubble always stays the plain
+                                          // tinted container below.
+                                          LiquidGlass.withOwnLayer(
+                                            shape: LiquidRoundedRectangle(
+                                              borderRadius: widget.borderRadius,
+                                            ),
+                                            settings: LiquidGlassSettings(
+                                              glassColor: Colors.transparent,
+                                              thickness: widget.clearGlass
+                                                  ? 14
+                                                  : 20,
+                                              refractiveIndex: 1.16,
+                                              chromaticAberration: 0.004,
+                                              blur: widget.clearGlass
+                                                  ? 2.5
+                                                  : 12,
+                                              saturation: 1.16,
+                                              // 拖动中的气泡与静止胶囊同款提亮
+                                              lightIntensity: isDark
+                                                  ? 0.85
+                                                  : 0.95,
+                                              ambientStrength: isDark
+                                                  ? 0.32
+                                                  : 0.2,
+                                            ),
+                                            child: const SizedBox.expand(),
+                                          )
+                                        else
+                                          AnimatedContainer(
+                                            duration: Duration(
+                                              milliseconds: widget.reduceMotion
+                                                  ? 0
+                                                  : isDragging
+                                                  ? 150
+                                                  : 200,
+                                            ),
+                                            curve: isDragging
+                                                ? Curves.easeOut
+                                                : Curves.easeOutCubic,
                                             decoration: BoxDecoration(
-                                              borderRadius: BorderRadius.circular(widget.borderRadius),
-                                              border: Border.all(
-                                                color: Colors.grey.shade500.withValues(alpha: 0.55),
-                                                width: 1.5,
+                                              // No tint while held — the light gray stroke (or the
+                                              // rainbow sheen, if opted into) is the only drag-state
+                                              // accent.
+                                              color: isDragging
+                                                  ? Colors.transparent
+                                                  : (isDark
+                                                        // 激活气泡略提亮：与大狗记一致，
+                                                        // 选中态在胶囊里清晰可辨
+                                                        ? Colors.white
+                                                              .withValues(
+                                                                alpha: 0.12,
+                                                              )
+                                                        : activeColor
+                                                              .withValues(
+                                                                alpha: 0.15,
+                                                              )),
+                                              borderRadius:
+                                                  BorderRadius.circular(
+                                                    widget.borderRadius,
+                                                  ),
+                                            ),
+                                          ),
+                                        // Stroke overlay lives outside the bubble-content branch
+                                        // above so it shows the same way whether the bubble itself
+                                        // is the real LiquidGlass shape or the plain tinted
+                                        // container.
+                                        if (isDragging &&
+                                            !widget.dragRainbowBorder)
+                                          Positioned.fill(
+                                            child: IgnorePointer(
+                                              child: DecoratedBox(
+                                                decoration: BoxDecoration(
+                                                  borderRadius:
+                                                      BorderRadius.circular(
+                                                        widget.borderRadius,
+                                                      ),
+                                                  border: Border.all(
+                                                    color: Colors.grey.shade500
+                                                        .withValues(
+                                                          alpha: 0.55,
+                                                        ),
+                                                    width: 1.5,
+                                                  ),
+                                                ),
                                               ),
                                             ),
                                           ),
-                                        ),
-                                      ),
-                                    if (isDragging && widget.dragRainbowBorder)
-                                      Positioned.fill(
-                                        child: IgnorePointer(
-                                          child: CustomPaint(
-                                            painter: _RainbowRingPainter(
-                                              borderRadius: widget.borderRadius,
+                                        if (isDragging &&
+                                            widget.dragRainbowBorder)
+                                          Positioned.fill(
+                                            child: IgnorePointer(
+                                              child: CustomPaint(
+                                                painter: _RainbowRingPainter(
+                                                  borderRadius:
+                                                      widget.borderRadius,
+                                                ),
+                                              ),
                                             ),
                                           ),
-                                        ),
-                                      ),
-                                  ],
-                                ),
-                              ),
-                            );
-                          }
-                        ),
-                        Row(
-                          children: List.generate(widget.items.length, (index) {
-                            final item = widget.items[index];
-                            final bool isActive = index == displayIndex;
-                            final color = isActive ? activeColor : inactiveColor;
-                            return SizedBox(
-                              width: itemWidth,
-                              height: widget.height,
-                              child: Column(
-                                mainAxisAlignment: MainAxisAlignment.center,
-                                children: [
-                                  _iconWithBadge(
-                                    context,
-                                    item,
-                                    IconTheme(
-                                      data: IconThemeData(
-                                        color: color,
-                                        size: widget.iconSize,
-                                      ),
-                                      child: item.iconWidget ??
-                                          Icon(
-                                            item.icon,
-                                            size: widget.iconSize,
-                                            color: color,
-                                          ),
+                                      ],
                                     ),
                                   ),
-                                  const SizedBox(height: 2),
-                                  Text(
-                                    item.label,
-                                    maxLines: 1,
-                                    overflow: TextOverflow.ellipsis,
-                                    style: Theme.of(context)
-                                        .textTheme
-                                        .bodySmall
-                                        ?.merge(widget.labelStyle)
-                                        .copyWith(color: color, fontWeight: widget.labelStyle?.fontWeight ?? FontWeight.w500),
+                                );
+                              },
+                            ),
+                            Row(
+                              children: List.generate(widget.items.length, (
+                                index,
+                              ) {
+                                final item = widget.items[index];
+                                final bool isActive = index == displayIndex;
+                                final color = isActive
+                                    ? activeColor
+                                    : inactiveColor;
+                                return SizedBox(
+                                  width: itemWidth,
+                                  height: widget.height,
+                                  child: _NavInkBackdrop(
+                                    clear: widget.clearGlass,
+                                    dark: isDark,
+                                    child: Column(
+                                      mainAxisAlignment:
+                                          MainAxisAlignment.center,
+                                      children: [
+                                        _iconWithBadge(
+                                          context,
+                                          item,
+                                          IconTheme(
+                                            data: IconThemeData(
+                                              color: color,
+                                              size: widget.iconSize,
+                                              shadows: inkShadows,
+                                            ),
+                                            child:
+                                                item.iconWidget ??
+                                                Icon(
+                                                  item.icon,
+                                                  size: widget.iconSize,
+                                                  color: color,
+                                                ),
+                                          ),
+                                        ),
+                                        const SizedBox(height: 2),
+                                        Text(
+                                          item.label,
+                                          maxLines: 1,
+                                          overflow: TextOverflow.ellipsis,
+                                          style: Theme.of(context)
+                                              .textTheme
+                                              .bodySmall
+                                              ?.merge(widget.labelStyle)
+                                              .copyWith(
+                                                color: color,
+                                                shadows: inkShadows,
+                                                fontWeight:
+                                                    widget
+                                                        .labelStyle
+                                                        ?.fontWeight ??
+                                                    FontWeight.w500,
+                                              ),
+                                        ),
+                                      ],
+                                    ),
                                   ),
-                                ],
-                              ),
-                            );
-                          }),
+                                );
+                              }),
+                            ),
+                          ],
                         ),
-                      ],
-                    ),
-                  );
-                },
-              ),
+                      );
+                    },
+                  ),
+                ),
+              ],
             ),
-          ],
           ),
         ),
-      ),
       ),
     );
   }
@@ -672,6 +795,34 @@ class _LiquidGlassNavBarState extends State<LiquidGlassNavBar>
 // ---------------------------------------------------------------------------
 // Legacy fallback — identical visuals to the pre-existing flat white nav bar.
 // ---------------------------------------------------------------------------
+
+/// Local foreground contrast only; the surrounding refractive lens stays clear.
+class _NavInkBackdrop extends StatelessWidget {
+  const _NavInkBackdrop({
+    required this.clear,
+    required this.dark,
+    required this.child,
+  });
+  final bool clear, dark;
+  final Widget child;
+  @override
+  Widget build(BuildContext context) => !clear
+      ? child
+      : DecoratedBox(
+          decoration: BoxDecoration(
+            gradient: RadialGradient(
+              radius: .9,
+              colors: [
+                (dark ? Colors.black : Colors.white).withValues(alpha: .84),
+                (dark ? Colors.black : Colors.white).withValues(alpha: .72),
+                (dark ? Colors.black : Colors.white).withValues(alpha: 0),
+              ],
+              stops: const [0, .48, 1],
+            ),
+          ),
+          child: child,
+        );
+}
 
 class _LegacyNavBar extends StatelessWidget {
   final List<LiquidGlassNavItem> items;
@@ -696,8 +847,10 @@ class _LegacyNavBar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final themeActiveColor = activeColor ?? Theme.of(context).colorScheme.primary;
-    final themeInactiveColor = inactiveColor ?? Theme.of(context).colorScheme.onSurfaceVariant;
+    final themeActiveColor =
+        activeColor ?? Theme.of(context).colorScheme.primary;
+    final themeInactiveColor =
+        inactiveColor ?? Theme.of(context).colorScheme.onSurfaceVariant;
 
     return SafeArea(
       top: false,
@@ -720,7 +873,8 @@ class _LegacyNavBar extends StatelessWidget {
           ],
         ),
         padding: EdgeInsets.symmetric(
-          horizontal: insets * 0.625, // AppSpacing.sm is ~10 which is 16 * 0.625
+          horizontal:
+              insets * 0.625, // AppSpacing.sm is ~10 which is 16 * 0.625
           vertical: insets * 0.625,
         ),
         child: Row(
@@ -732,7 +886,9 @@ class _LegacyNavBar extends StatelessWidget {
                 borderRadius: BorderRadius.circular(insets),
                 onTap: () => onTap(index),
                 child: Padding(
-                  padding: EdgeInsets.symmetric(vertical: insets * 0.375), // AppSpacing.xs is ~6
+                  padding: EdgeInsets.symmetric(
+                    vertical: insets * 0.375,
+                  ), // AppSpacing.xs is ~6
                   child: Column(
                     mainAxisSize: MainAxisSize.min,
                     children: [
@@ -741,38 +897,48 @@ class _LegacyNavBar extends StatelessWidget {
                         item,
                         IconTheme(
                           data: IconThemeData(
-                            color: isActive ? themeActiveColor : themeInactiveColor,
+                            color: isActive
+                                ? themeActiveColor
+                                : themeInactiveColor,
                             size: iconSize,
                           ),
-                          child: item.iconWidget ??
+                          child:
+                              item.iconWidget ??
                               Icon(
                                 item.icon,
                                 size: iconSize,
-                                color: isActive ? themeActiveColor : themeInactiveColor,
+                                color: isActive
+                                    ? themeActiveColor
+                                    : themeInactiveColor,
                               ),
                         ),
                       ),
                       SizedBox(height: insets * 0.375),
                       Text(
                         item.label,
-                        style: Theme.of(context)
-                            .textTheme
-                            .bodySmall
+                        style: Theme.of(context).textTheme.bodySmall
                             ?.merge(labelStyle)
                             .copyWith(
-                              color: isActive ? themeActiveColor : themeInactiveColor,
-                              fontWeight: labelStyle?.fontWeight ?? FontWeight.w500,
+                              color: isActive
+                                  ? themeActiveColor
+                                  : themeInactiveColor,
+                              fontWeight:
+                                  labelStyle?.fontWeight ?? FontWeight.w500,
                             ),
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                       ),
-                      SizedBox(height: insets * 0.625 - 2), // AppSpacing.sm - 2 = 8
+                      SizedBox(
+                        height: insets * 0.625 - 2,
+                      ), // AppSpacing.sm - 2 = 8
                       AnimatedContainer(
                         duration: const Duration(milliseconds: 200),
                         height: 3,
                         width: isActive ? 28.0 : 0.0,
                         decoration: BoxDecoration(
-                          color: isActive ? themeActiveColor : Colors.transparent,
+                          color: isActive
+                              ? themeActiveColor
+                              : Colors.transparent,
                           borderRadius: BorderRadius.circular(999),
                         ),
                       ),
@@ -879,9 +1045,11 @@ class _LiquidGlassBackButtonState extends State<LiquidGlassBackButton>
       );
     }
 
-    final glassShape = LiquidRoundedSuperellipse(borderRadius: widget.borderRadius);
-    final hasParentLayer = !widget.ownLayer &&
-        LiquidGlassRenderScope.maybeOf(context) != null;
+    final glassShape = LiquidRoundedRectangle(
+      borderRadius: widget.borderRadius,
+    );
+    final hasParentLayer =
+        !widget.ownLayer && LiquidGlassRenderScope.maybeOf(context) != null;
 
     final glassIcon = SizedBox.expand(
       child: Icon(widget.icon, size: widget.size * 0.55, color: iconColor),
@@ -894,10 +1062,8 @@ class _LiquidGlassBackButtonState extends State<LiquidGlassBackButton>
       onTap: widget.onTap ?? () => Navigator.of(context).maybePop(),
       child: AnimatedBuilder(
         animation: _pressCtrl,
-        builder: (context, child) => Transform.scale(
-          scale: _pressCtrl.value,
-          child: child,
-        ),
+        builder: (context, child) =>
+            Transform.scale(scale: _pressCtrl.value, child: child),
         child: Container(
           width: widget.size,
           height: widget.size,
@@ -931,8 +1097,10 @@ class _LiquidGlassBackButtonState extends State<LiquidGlassBackButton>
                           glassColor: isDark
                               ? Colors.white.withValues(alpha: 0.04)
                               : Colors.white.withValues(alpha: 0.05),
-                          thickness: 22,
-                          blur: 12,
+                          thickness: 14,
+                          refractiveIndex: 1.16,
+                          chromaticAberration: 0.004,
+                          blur: 3,
                           saturation: 1.16,
                           lightIntensity: isDark ? 0.15 : 0.9,
                           ambientStrength: 0.2,
@@ -1075,9 +1243,12 @@ class _LiquidGlassContainerState extends State<LiquidGlassContainer>
         width: widget.width,
         height: widget.height,
         decoration: BoxDecoration(
-          color: widget.backgroundColor ??
+          color:
+              widget.backgroundColor ??
               widget.color ??
-              Theme.of(context).colorScheme.surfaceContainerHighest.withValues(alpha: 0.5),
+              Theme.of(
+                context,
+              ).colorScheme.surfaceContainerHighest.withValues(alpha: 0.5),
           borderRadius: BorderRadius.circular(widget.borderRadius),
         ),
         child: widget.backgroundColor != null ? widget.child : content,
@@ -1093,17 +1264,21 @@ class _LiquidGlassContainerState extends State<LiquidGlassContainer>
       return plainContainer;
     }
 
-    final glassShape = LiquidRoundedSuperellipse(borderRadius: widget.borderRadius);
+    final glassShape = LiquidRoundedRectangle(
+      borderRadius: widget.borderRadius,
+    );
 
     // Use parent layer if available and ownLayer is false — much cheaper
     // when many containers are grouped (e.g. a grid of cards).
-    final hasParentLayer = !widget.ownLayer &&
-        LiquidGlassRenderScope.maybeOf(context) != null;
+    final hasParentLayer =
+        !widget.ownLayer && LiquidGlassRenderScope.maybeOf(context) != null;
 
     final glassSettings = LiquidGlassSettings(
-      glassColor: widget.color ?? (isDark
-          ? Colors.white.withValues(alpha: 0.04)
-          : Colors.white.withValues(alpha: 0.05)),
+      glassColor:
+          widget.color ??
+          (isDark
+              ? Colors.white.withValues(alpha: 0.04)
+              : Colors.white.withValues(alpha: 0.05)),
       thickness: widget.thickness ?? 32,
       blur: widget.blur ?? 1,
       saturation: widget.saturation ?? 1.8,
@@ -1136,10 +1311,7 @@ class _LiquidGlassContainerState extends State<LiquidGlassContainer>
             glowColor: Colors.white.withValues(alpha: 0.35),
             glowRadius: 1.2,
             child: hasParentLayer
-                ? LiquidGlass(
-                    shape: glassShape,
-                    child: content,
-                  )
+                ? LiquidGlass(shape: glassShape, child: content)
                 : LiquidGlass.withOwnLayer(
                     shape: glassShape,
                     settings: glassSettings,
@@ -1159,10 +1331,8 @@ class _LiquidGlassContainerState extends State<LiquidGlassContainer>
         onTap: widget.onTap,
         child: AnimatedBuilder(
           animation: _pressCtrl,
-          builder: (context, child) => Transform.scale(
-            scale: _pressCtrl.value,
-            child: child,
-          ),
+          builder: (context, child) =>
+              Transform.scale(scale: _pressCtrl.value, child: child),
           child: container,
         ),
       );

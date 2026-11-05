@@ -13,7 +13,7 @@ vec4 encodeDisplacementData(vec2 displacement, float maxDisplacement, float heig
     
     float normalizedHeight = thickness > 0.0 ? clamp(height / thickness, 0.0, 1.0) : 0.0;
     
-    return vec4(normalizedDisp.x, normalizedDisp.y, normalizedHeight, alpha);
+    return vec4(vec3(normalizedDisp, normalizedHeight) * alpha, alpha);
 }
 
 // Decode displacement from RG channels

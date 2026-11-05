@@ -9,7 +9,7 @@
 // give some credit like I did here.
 
 #version 460 core
-precision mediump float;
+precision highp float;
 
 #define DEBUG_NORMALS 0
 
@@ -54,6 +54,7 @@ void main() {
     // Generate shape and calculate normal using shader-specific method
     float sd = sceneSDF(fragCoord, int(uNumShapes), uShapeData, uBlend);
     float foregroundAlpha = 1.0 - smoothstep(-2.0, 0.0, sd);
+    vec3 normal = getNormal(sd, uThickness);
 
     // Early discard for pixels outside glass shapes to reduce overdraw
     if (foregroundAlpha < 0.01) {
@@ -62,7 +63,6 @@ void main() {
         return;
     }
 
-    vec3 normal = getNormal(sd, uThickness);
     
     // Use shared rendering pipeline
     fragColor = renderLiquidGlass(

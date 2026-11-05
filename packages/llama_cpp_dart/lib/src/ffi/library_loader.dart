@@ -137,7 +137,6 @@ final class LlamaLibrary {
     _mtmdLib = mtmd;
 
     final bindings = LlamaBindings.fromLookup(_routedLookup);
-    bindings.llama_backend_init();
 
     // On Android, set ADSP_LIBRARY_PATH so the Hexagon/FastRPC layer can
     // locate `libggml-htp-v*.so` skeleton libs. Must happen before
@@ -150,6 +149,11 @@ final class LlamaLibrary {
         _setAdspLibraryPath(adspDir);
       }
     }
+
+    // llama_backend_init itself discovers backends. FastRPC must see the
+    // skeleton directory before that first discovery, not only before the
+    // explicit load_all below (a failed HTP registry is cached process-wide).
+    bindings.llama_backend_init();
 
     if (dir != null) {
       final dirPtr = dir.toNativeUtf8(allocator: calloc);

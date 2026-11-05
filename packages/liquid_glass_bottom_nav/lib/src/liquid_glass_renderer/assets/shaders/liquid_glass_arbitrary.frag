@@ -4,7 +4,7 @@
 // This demonstrates how the shared rendering pipeline makes it easy to create variants
 
 #version 320 es
-precision mediump float;
+precision highp float;
 
 #define DEBUG_NORMALS 0
 #define DEBUG_BLUR_MATTE 0

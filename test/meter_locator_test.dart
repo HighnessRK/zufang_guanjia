@@ -5,6 +5,20 @@ import 'package:image/image.dart' as img;
 import 'package:zufang_guanjia/services/ocr/meter_locator.dart';
 
 void main() {
+  test('红色小数轮及中性压缩残边均移除，黑色整数保留', () {
+    final image = img.Image(width: 200, height: 60);
+    img.fill(image, color: img.ColorRgb8(255, 255, 255));
+    img.fillRect(image,
+        x1: 20, y1: 10, x2: 100, y2: 50, color: img.ColorRgb8(25, 25, 25));
+    img.fillRect(image,
+        x1: 150, y1: 10, x2: 160, y2: 50, color: img.ColorRgb8(140, 40, 40));
+    image.setPixelRgb(155, 30, 45, 45, 45);
+    image.setPixelRgb(161, 30, 45, 45, 45);
+    removeRedMeterDigits(image);
+    expect(image.getPixel(155, 30).r, 255);
+    expect(image.getPixel(161, 30).r, 255);
+    expect(image.getPixel(50, 30).r, 25);
+  });
   test('五块高亮示数窗按行从左到右定位并裁成小图', () {
     final img.Image source = img.Image(width: 1200, height: 900);
     img.fill(source, color: img.ColorRgb8(45, 45, 50));

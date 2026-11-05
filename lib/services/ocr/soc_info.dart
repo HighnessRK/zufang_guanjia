@@ -64,5 +64,5 @@ class SocInfo {
       : level == 3
           ? '硬件支持联发科 NPU'
           : '硬件能力待确认';
-  String get hint => '$npu；当前安装包使用 CPU 推理，尚未接入此模型的 NPU 后端。';
+  String get hint => '$npu；支持的骁龙设备可使用 Hexagon 后端，不可用时使用 CPU。';
 }

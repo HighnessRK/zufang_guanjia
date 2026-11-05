@@ -11,6 +11,7 @@ import 'package:image/image.dart' as img;
 
 import 'services/ocr/local_ocr_engine.dart';
 import 'services/ocr/model_manager.dart';
+import 'core/config/app_config.dart';
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
@@ -36,9 +37,14 @@ class _ProbeState extends State<_Probe> {
     await channel.invokeMethod<void>('recognitionActive', {'active': true});
     final engine = LocalOcrEngine(ModelManager.instance);
     try {
-      LlamaLibrary.load(path: LlamaLibrary.defaultFileName());
-      LlamaLog.captureToFile(
-          '${(await getTemporaryDirectory()).path}/ocr-native.log');
+      final support = await getApplicationSupportDirectory();
+      AppConfig.instance.ocrAcceleration =
+          await File('${support.path}/probe-cpu').exists() ? 'cpu' : 'auto';
+      if (!await File('${support.path}/probe-cold').exists()) {
+        LlamaLibrary.load(path: LlamaLibrary.defaultFileName());
+        LlamaLog.captureToFile(
+            '${(await getTemporaryDirectory()).path}/ocr-native.log');
+      }
       await ModelManager.instance.init();
       // Synthetic fixture, never a real bill or tenant photo.
       final recorder = ui.PictureRecorder();

@@ -31,6 +31,19 @@ class AppChangelog {
 
   /// 全部版本（倒序：最新在最前）
   static const List<ChangelogVersion> versions = <ChangelogVersion>[
+    ChangelogVersion('1.2.7', '2026-11-05', <ChangelogEntry>[
+      ChangelogEntry('新增', '本地识别接入 Hexagon NPU，支持的骁龙设备自动加速，并提供 CPU 兼容模式'),
+      ChangelogEntry('修复', '修正 NPU 运行库初始化顺序，实际引擎随识别状态更新'),
+      ChangelogEntry('优化', '底部导航采用全透玻璃、曲面折射与边缘高光，修复轮廓破碎感'),
+      ChangelogEntry('新增', '个性化支持八款应用图标，两行四列，可同步切换桌面与应用内图标'),
+      ChangelogEntry('新增', '新增多种背景光效、深浅主题与跟随系统设置，默认跟随系统'),
+      ChangelogEntry('新增', '支持动效风格、减少动效、触感反馈和全透／磨砂玻璃切换'),
+      ChangelogEntry('优化', '统一识别方式、推理加速、图片来源及确认弹窗的卡片选择界面'),
+      ChangelogEntry('优化', '租金报表突出实收与收款进度，分类金额右对齐，适配深浅主题'),
+      ChangelogEntry('修复', '浅色导航不再透出灰色投影，导航选项增加对比保护，顶部模糊连续渐隐'),
+      ChangelogEntry('优化', '切换导航时仅绘制当前页面，停用隐藏页动效，减少玻璃背景重复绘制'),
+      ChangelogEntry('优化', '引擎准备移至后台，压缩原生运行库体积，并增强红色小数位过滤'),
+    ]),
     ChangelogVersion('1.2.6', '2026-11-05', <ChangelogEntry>[
       ChangelogEntry('新增', '飞书增加从云端更新入口，双向同步显示上传与下载数量'),
       ChangelogEntry('修复', '识别设置显示就绪、运行和上次实际引擎，芯片使用完整商品名'),

@@ -125,13 +125,14 @@ List<Uint8List>? cropMeterWindows(Uint8List bytes,
         x: box.left, y: box.top, width: box.width, height: box.height);
     // 机械表红色轮通常表示 0.1 位。先按「红色明显高于绿/蓝」把红色
     // 数字轮和红色边框涂白，避免模型把红位拼进整数；全黑表盘不受影响。
-    _whitenRed(window);
+    removeRedMeterDigits(window);
     // 示数位是表窗中部的一条横向数字带，上下还有厂名、型号等小字。
     // 只裁这条带能显著放大数字，减少铭牌数字干扰；定位失败则退回整窗。
     final List<int>? band = _digitBand(window);
     final img.Image target;
     if (band == null) {
       target = _padded(oriented, box, 0.15);
+      removeRedMeterDigits(target);
     } else {
       final int pad = math.max(2, ((band[1] - band[0]) * 0.8).round());
       final int top = math.max(0, band[0] - pad);
@@ -150,12 +151,29 @@ List<Uint8List>? cropMeterWindows(Uint8List bytes,
   return crops;
 }
 
-void _whitenRed(img.Image image) {
+/// Remove red fractional digits, including neutral JPEG edges inside the ink.
+/// A small halo prevents a partially erased red digit becoming a black digit.
+void removeRedMeterDigits(img.Image image) {
+  final mask = Uint8List(image.width * image.height);
   for (int y = 0; y < image.height; y++) {
     for (int x = 0; x < image.width; x++) {
       final img.Pixel p = image.getPixel(x, y);
       if (p.r.toInt() - math.max(p.g.toInt(), p.b.toInt()) > 10) {
-        image.setPixelRgb(x, y, 255, 255, 255);
+        mask[y * image.width + x] = 1;
+      }
+    }
+  }
+  for (int y = 0; y < image.height; y++) {
+    for (int x = 0; x < image.width; x++) {
+      if (mask[y * image.width + x] == 0) continue;
+      for (int yy = math.max(0, y - 2);
+          yy <= math.min(image.height - 1, y + 2);
+          yy++) {
+        for (int xx = math.max(0, x - 2);
+            xx <= math.min(image.width - 1, x + 2);
+            xx++) {
+          image.setPixelRgb(xx, yy, 255, 255, 255);
+        }
       }
     }
   }

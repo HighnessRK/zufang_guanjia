@@ -9,6 +9,7 @@ import 'package:llama_cpp_dart/llama_cpp_dart.dart';
 import 'meter_locator.dart';
 import 'model_manager.dart';
 import 'ocr_engine.dart';
+import '../../core/config/app_config.dart';
 
 /// Image preprocessing runs off the UI isolate. Cap the LONG edge as well as
 /// the short edge so panoramas cannot exhaust the vision token budget.
@@ -26,30 +27,45 @@ List<int> _thumbnail(List<int> bytes) {
 }
 
 class LocalOcrEngine implements OcrEngine {
-  LocalOcrEngine(this.models);
+  LocalOcrEngine(this.models, {this.onBackendChanged});
   final ModelManager models;
+  final void Function(String)? onBackendChanged;
   LlamaEngine? _engine;
   String backend = 'CPU';
 
   Future<LlamaEngine> _load() async {
     if (_engine != null) return _engine!;
     if (!models.ready) throw StateError('本地模型未下载或校验未通过');
-    // This distribution uses the default CPU AAR. No invented runtime AAR API.
-    final engine = await LlamaEngine.spawn(
-      modelParams:
-          ModelParams(path: models.file(models.assets[0]).path, gpuLayers: 0),
-      contextParams: const ContextParams(nCtx: 4096, nBatch: 256, nUbatch: 256),
-      multimodalParams: MultimodalParams(
-          mmprojPath: models.file(models.assets[1]).path, useGpu: false),
-    );
+    // FastRPC discovery can take seconds on first use; keep it off the UI.
+    final htp = await compute(_discoverHtp, AppConfig.instance.ocrAcceleration);
+    var npu = htp.isNotEmpty;
+    Future<LlamaEngine> spawn(bool accelerated) => LlamaEngine.spawn(
+          modelParams: ModelParams(
+              path: models.file(models.assets[0]).path,
+              gpuLayers: accelerated ? 999 : 0,
+              mainGpu: accelerated ? 0 : -1,
+              splitMode: SplitMode.none,
+              devices: accelerated ? [htp.first] : const []),
+          contextParams:
+              const ContextParams(nCtx: 4096, nBatch: 256, nUbatch: 256),
+          multimodalParams: MultimodalParams(
+              mmprojPath: models.file(models.assets[1]).path, useGpu: false),
+        );
+    late final LlamaEngine engine;
+    try {
+      engine = await spawn(npu);
+    } catch (e) {
+      if (!npu) rethrow;
+      debugPrint('OCR_RUNTIME Hexagon initialization failed; retry CPU: $e');
+      npu = false;
+      engine = await spawn(false);
+    }
     if (!engine.supportsVision || !engine.multimodalLoaded) {
       await engine.dispose();
       throw StateError('投影器未提供视觉能力，已停止本地识别');
     }
-    // Devices enumerate available backends, not evidence of tensor placement.
-    // gpuLayers=0 and useGpu=false deliberately guarantee this build's CPU path.
-    debugPrint(
-        'OCR backend CPU; devices=${engine.devices.map((d) => d.registryName).join(',')}');
+    backend = npu ? 'Hexagon NPU + CPU' : 'CPU';
+    onBackendChanged?.call(backend);
     _engine = engine;
     return engine;
   }
@@ -157,6 +173,23 @@ class LocalOcrEngine implements OcrEngine {
     _engine = null;
     await engine?.dispose();
   }
+}
+
+List<String> _discoverHtp(String acceleration) {
+  LlamaLibrary.load(path: LlamaLibrary.defaultFileName());
+  final devices = LlamaBackends.list();
+  final htp = acceleration == 'cpu'
+      ? <String>[]
+      : devices
+          .where((d) {
+            final registry = d.registryName.toLowerCase();
+            return registry.contains('htp') || registry.contains('hexagon');
+          })
+          .map((d) => d.name)
+          .toList();
+  debugPrint(
+      'OCR_RUNTIME npu=${htp.isNotEmpty} devices=${devices.map((d) => '${d.name}:${d.registryName}').join(',')}');
+  return htp;
 }
 
 /// 单窗读数的严格解析：允许空格分组和常见单位，拒绝解释、多个数字、
