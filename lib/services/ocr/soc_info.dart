@@ -15,13 +15,36 @@ class SocInfo {
         .allMatches(text)
         .map((m) => int.parse(m[1]!))
         .toList();
-    // Explicit known IDs only: numeric ordering is NOT proof of a future SoC.
-    final level = ids.any([8550, 8650, 8750, 8850].contains)
-        ? 2
-        : ids.any([8450, 8475].contains)
-            ? 1
-            : 0;
-    return SocInfo(text.isEmpty ? 'SoC 未知' : text, level);
+    const names = {
+      8450: '骁龙 8 Gen 1',
+      8475: '骁龙 8+ Gen 1',
+      8550: '骁龙 8 Gen 2',
+      8650: '骁龙 8 Gen 3',
+      8750: '骁龙 8 Elite',
+      8850: '骁龙 8 Elite Gen 5'
+    };
+    for (final id in ids) {
+      if (names.containsKey(id)) return SocInfo(names[id]!, id >= 8550 ? 2 : 1);
+    }
+    const mediatek = {
+      'MT6993': '天玑 9500',
+      'MT6991': '天玑 9400',
+      'MT6989': '天玑 9300',
+      'MT6985': '天玑 9200'
+    };
+    for (final entry in mediatek.entries) {
+      if (text.toUpperCase().contains(entry.key)) {
+        return SocInfo(entry.value, 3);
+      }
+    }
+    // Use a friendly name supplied by Android, never expose board codenames.
+    final name = '${info['socModel'] ?? ''}';
+    return SocInfo(
+        RegExp(r'Snapdragon|Dimensity|天玑|骁龙', caseSensitive: false)
+                .hasMatch(name)
+            ? name.replaceAll('Snapdragon', '骁龙').replaceAll('Dimensity', '天玑')
+            : '芯片信息未识别',
+        0);
   }
 
   static Future<SocInfo> read() async {
@@ -36,9 +59,10 @@ class SocInfo {
     }
   }
 
-  String get hint => level == 2
-      ? '检测到骁龙 8 Gen 2 或较新系列，可作为未来 Hexagon 构建的候选测试设备。当前版本仍为 CPU，未验证该模型的 NPU 兼容性或加速效果。'
-      : level == 1
-          ? '检测到骁龙 8 Gen 1 系列。当前版本使用 CPU；其他 Hexagon 构建需要单独验证兼容性，不能在此开启。'
-          : '当前设备芯片不在推荐范围内，NPU 加速可能无法工作。';
+  String get npu => level == 1 || level == 2
+      ? '硬件支持 Hexagon NPU'
+      : level == 3
+          ? '硬件支持联发科 NPU'
+          : '硬件能力待确认';
+  String get hint => '$npu；当前安装包使用 CPU 推理，尚未接入此模型的 NPU 后端。';
 }

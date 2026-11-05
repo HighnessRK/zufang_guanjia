@@ -53,8 +53,7 @@ class _McpSettingsPageState extends State<McpSettingsPage> {
                 children: <Widget>[
                   MiuixSwitchPreference(
                     title: '启用 MCP Server',
-                    summary:
-                        '允许 AI 助手通过 MCP 协议访问 ${AppConstants.appName}',
+                    summary: '允许 AI 助手通过 MCP 协议访问 ${AppConstants.appName}',
                     value: cfg.mcpEnabled,
                     onChanged: (bool v) async {
                       await cfg.update(mcpEnabled: v);
@@ -64,8 +63,8 @@ class _McpSettingsPageState extends State<McpSettingsPage> {
                   ),
                   const MiuixHorizontalDivider(),
                   Padding(
-                    padding:
-                        const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 16, vertical: 12),
                     child: Row(
                       children: <Widget>[
                         const MiuixText('运行状态',
@@ -127,8 +126,8 @@ class _McpSettingsPageState extends State<McpSettingsPage> {
             ),
             const SizedBox(height: 8),
             MiuixText(
-               '仅复制服务地址，不含 JSON 语法；粘贴到 AI 客户端的 MCP 地址栏。'
-               '端口固定 ${AppConstants.mcpPort}，局域网 IP 变化后需重新复制。',
+              '仅复制服务地址，不含 JSON 语法；粘贴到 AI 客户端的 MCP 地址栏。'
+              '端口固定 ${AppConstants.mcpPort}，局域网 IP 变化后需重新复制。',
               fontSize: 12,
               height: 1.6,
               color: c.onSurfaceVariantSummary,
@@ -142,7 +141,9 @@ class _McpSettingsPageState extends State<McpSettingsPage> {
               borderRadius: 20,
               child: Column(
                 children: <Widget>[
-                  for (int i = 0; i < McpTools.capabilities.length; i++) ...<Widget>[
+                  for (int i = 0;
+                      i < McpTools.capabilities.length;
+                      i++) ...<Widget>[
                     if (i > 0) const MiuixHorizontalDivider(),
                     _buildCapability(McpTools.capabilities[i]),
                   ],
@@ -165,24 +166,39 @@ class _McpSettingsPageState extends State<McpSettingsPage> {
 
   /// 配置复制按钮：整宽圆角浅色按钮（对齐 Pronto 的居中文案胶囊）
   Widget _buildCopyButton(String label) {
-    return GestureDetector(
-      behavior: HitTestBehavior.opaque,
-      onTap: () => _copyConfig(label),
-      child: Container(
-        height: 52,
-        alignment: Alignment.center,
-        decoration: BoxDecoration(
-          color: MiuixTheme.of(context).colors.secondaryContainer,
-          borderRadius: BorderRadius.circular(26),
-        ),
-        child: MiuixText(
-          label,
-          fontSize: 16,
-          fontWeight: FontWeight.w700,
-          color: MiuixTheme.of(context).colors.onSurfaceContainer,
-        ),
-      ),
-    );
+    final local = label.contains('本机');
+    return GlassCard(
+        padding: const EdgeInsets.all(18),
+        borderRadius: 20,
+        onPressed: () => _copyConfig(label),
+        child: Row(children: [
+          Container(
+              padding: const EdgeInsets.all(10),
+              decoration: BoxDecoration(
+                  color: MiuixTheme.of(context)
+                      .colors
+                      .primary
+                      .withValues(alpha: .12),
+                  borderRadius: BorderRadius.circular(13)),
+              child: Icon(
+                  local ? Icons.phone_android_rounded : Icons.wifi_rounded,
+                  color: MiuixTheme.of(context).colors.primary,
+                  size: 22)),
+          const SizedBox(width: 14),
+          Expanded(
+              child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                MiuixText(label, fontSize: 15, fontWeight: FontWeight.w600),
+                const SizedBox(height: 4),
+                MiuixText(local ? '在本机 AI 客户端使用' : '供同一 Wi-Fi 下的设备使用',
+                    fontSize: 12,
+                    color:
+                        MiuixTheme.of(context).colors.onSurfaceVariantSummary),
+              ])),
+          Icon(Icons.copy_rounded,
+              size: 19, color: MiuixTheme.of(context).colors.primary),
+        ]));
   }
 
   /// 能力分组行：图标 + 分组名 / 工具摘要 + 展开箭头，点击展开工具清单
@@ -191,49 +207,19 @@ class _McpSettingsPageState extends State<McpSettingsPage> {
       title: cap.title,
       summary: '${cap.summary} · ${cap.tools.length} 个工具',
       onClick: () {
-        showDialog<void>(
-          context: context,
-          builder: (BuildContext ctx) {
-            final MiuixColors dc = MiuixTheme.of(ctx).colors;
-            return AlertDialog(
-              backgroundColor: dc.surface,
-              title: MiuixText(cap.title,
-                  fontSize: 17, fontWeight: FontWeight.w700),
-              content: SingleChildScrollView(
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: <Widget>[
-                    MiuixText(cap.summary,
-                        fontSize: 13,
-                        height: 1.6,
-                        color: dc.onSurfaceVariantSummary),
-                    const SizedBox(height: 12),
-                    for (final String t in cap.tools) ...<Widget>[
-                      Padding(
-                        padding: const EdgeInsets.symmetric(vertical: 3),
-                        child: MiuixText(
-                          '· $t',
-                          fontSize: 13,
-                          height: 1.5,
-                          fontFamily: 'monospace',
-                          color: dc.onSurfaceContainer,
-                        ),
-                      ),
-                    ],
-                  ],
-                ),
-              ),
-              actions: <Widget>[
-                TextButton(
-                  onPressed: () => Navigator.of(ctx).pop(),
-                  child: MiuixText('关闭',
-                      fontSize: 14, color: dc.primary),
-                ),
-              ],
-            );
-          },
-        );
+        showAppDialog(context,
+            title: cap.title,
+            summary: cap.summary,
+            confirmText: '完成',
+            cancelText: '关闭',
+            content: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  for (final tool in cap.tools)
+                    Padding(
+                        padding: const EdgeInsets.symmetric(vertical: 5),
+                        child: MiuixText('· $tool', fontSize: 13, height: 1.5)),
+                ]));
       },
     );
   }

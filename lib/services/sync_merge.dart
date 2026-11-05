@@ -3,11 +3,15 @@ import 'dart:convert';
 String canonicalJson(Object? value) {
   Object? normalize(Object? v) {
     if (v is Map) {
-      return {for (final k in v.keys.map((e) => e.toString()).toList()..sort()) k: normalize(v[k])};
+      return {
+        for (final k in v.keys.map((e) => e.toString()).toList()..sort())
+          k: normalize(v[k])
+      };
     }
     if (v is List) return v.map(normalize).toList();
     return v;
   }
+
   return jsonEncode(normalize(value));
 }
 
@@ -24,4 +28,23 @@ Map<String, String> mergeSync(Map<String, String> base,
     if (value != null) result[key] = value;
   }
   return result;
+}
+
+/// A pull applies cloud deltas without acknowledging unuploaded local edits.
+({Map<String, String> values, Set<String> writes, Map<String, String> baseline})
+    planSync(Map<String, String> base, Map<String, String> local,
+        Map<String, String> remote,
+        {bool pullOnly = false, bool replace = false}) {
+  final values = replace
+      ? Map<String, String>.from(remote)
+      : mergeSync(base, local, remote);
+  return (
+    values: values,
+    writes: pullOnly
+        ? <String>{}
+        : {...remote.keys, ...values.keys}
+            .where((k) => remote[k] != values[k])
+            .toSet(),
+    baseline: pullOnly ? Map<String, String>.from(remote) : values
+  );
 }

@@ -31,6 +31,14 @@ class AppChangelog {
 
   /// 全部版本（倒序：最新在最前）
   static const List<ChangelogVersion> versions = <ChangelogVersion>[
+    ChangelogVersion('1.2.6', '2026-11-05', <ChangelogEntry>[
+      ChangelogEntry('新增', '飞书增加从云端更新入口，双向同步显示上传与下载数量'),
+      ChangelogEntry('修复', '识别设置显示就绪、运行和上次实际引擎，芯片使用完整商品名'),
+      ChangelogEntry('优化', '区分芯片 NPU 硬件能力与当前 CPU 推理状态'),
+      ChangelogEntry('优化', '统一轻提示、MCP 操作卡片和弹窗，改善字体与按钮层级'),
+      ChangelogEntry('优化', '玻璃导航增强磨砂折射与边缘高光，减少背景文字重影'),
+      ChangelogEntry('优化', '重新设计应用图标，桌面和关于页使用一致的玻璃房屋造型'),
+    ]),
     ChangelogVersion('1.2.5', '2026-11-05', <ChangelogEntry>[
       ChangelogEntry('修复', '重新打开应用时先检查本地模型，不再把校验中的模型显示为未下载'),
       ChangelogEntry('修复', '一图多表定位失败时支持整图识别，按位置保留无法读取的表位'),

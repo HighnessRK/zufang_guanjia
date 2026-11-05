@@ -231,7 +231,9 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
                     items: _items,
                     selectedIndex: current,
                     onTap: _handleTabTap,
-                    iconSize: 22,
+                    iconSize: 23,
+                    liquidActiveBubble: false,
+                    dragRainbowBorder: true,
                     // 紧凑悬浮胶囊：高度 60、居中限宽 320、两侧留白，
                     // 不再横贯整屏（对齐大狗记 Pronto 的短 pill 观感）
                     height: 60,

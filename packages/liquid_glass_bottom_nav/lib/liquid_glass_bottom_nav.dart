@@ -397,12 +397,12 @@ class _LiquidGlassNavBarState extends State<LiquidGlassNavBar>
                     // Light mode: high white tint for vibrancy, blur kept at 1
                     // so the capsule reads as clean white without any fogging.
                     glassColor: isDark
-                        ? Colors.white.withValues(alpha: 0.10)
-                        : Colors.white.withValues(alpha: 0.76),
-                    thickness: 32,
-                    blur: 1,
-                    saturation: 1.8,
-                    lightIntensity: isDark ? 0.55 : 1.0,
+                        ? Colors.white.withValues(alpha: 0.08)
+                        : Colors.white.withValues(alpha: 0.35),
+                    thickness: 22,
+                    blur: 12,
+                    saturation: 1.16,
+                    lightIntensity: isDark ? 0.85 : 0.95,
                     ambientStrength: isDark ? 0.32 : 0.2,
                   ),
                   child: const SizedBox.expand(),
@@ -547,11 +547,11 @@ class _LiquidGlassNavBarState extends State<LiquidGlassNavBar>
                                         ),
                                         settings: LiquidGlassSettings(
                                           glassColor: Colors.transparent,
-                                          thickness: 32,
-                                          blur: 1,
-                                          saturation: 1.8,
+                                          thickness: 22,
+                                          blur: 12,
+                                          saturation: 1.16,
                                           // 拖动中的气泡与静止胶囊同款提亮
-                                          lightIntensity: isDark ? 0.55 : 1.0,
+                                          lightIntensity: isDark ? 0.85 : 0.95,
                                           ambientStrength:
                                               isDark ? 0.32 : 0.2,
                                         ),
@@ -931,9 +931,9 @@ class _LiquidGlassBackButtonState extends State<LiquidGlassBackButton>
                           glassColor: isDark
                               ? Colors.white.withValues(alpha: 0.04)
                               : Colors.white.withValues(alpha: 0.05),
-                          thickness: 32,
-                          blur: 1,
-                          saturation: 1.8,
+                          thickness: 22,
+                          blur: 12,
+                          saturation: 1.16,
                           lightIntensity: isDark ? 0.15 : 0.9,
                           ambientStrength: 0.2,
                         ),

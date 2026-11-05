@@ -25,7 +25,7 @@ class _OcrSettingsPanelState extends State<OcrSettingsPanel> {
     super.initState();
     models.addListener(_refresh);
     resolver.addListener(_refresh);
-    _run(models.init);
+    _run(resolver.restoreStatus);
     SocInfo.read().then((value) {
       if (mounted) setState(() => soc = value);
     });
@@ -186,7 +186,8 @@ class _OcrSettingsPanelState extends State<OcrSettingsPanel> {
                       children: [
                         InfoRow('实际引擎', resolver.actualEngine),
                         InfoRow('设备芯片', soc.description),
-                        const InfoRow('运行方式', 'CPU · 暂不支持 NPU 加速'),
+                        InfoRow('NPU 硬件', soc.npu),
+                        const InfoRow('当前推理', 'CPU · NPU 后端未接入'),
                         const InfoRow('下载来源', ModelCatalog.sourceLabel),
                         const SizedBox(height: 8),
                         MiuixText(

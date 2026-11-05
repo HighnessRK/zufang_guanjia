@@ -18,7 +18,34 @@ class OcrEngineResolver extends ChangeNotifier {
   final ModelManager models;
   OcrEngine? _local;
   Future<void> _tail = Future<void>.value();
-  String actualEngine = '尚未识别', warning = '';
+  String _actualEngine = '', warning = '';
+  String get actualEngine => _actualEngine.isNotEmpty
+      ? _actualEngine
+      : AppConfig.instance.ocrMode == 'cloud'
+          ? '云端 API · 待识别'
+          : models.ready
+              ? '本地 Xiaomi-OCR-0 · CPU 就绪'
+              : '等待模型就绪';
+  set actualEngine(String value) => _actualEngine = value;
+  Future<void> restoreStatus() async {
+    await models.init();
+    final f = File('${models.root.path}/last-engine.txt');
+    if (_actualEngine.isEmpty && await f.exists()) {
+      _actualEngine = '上次：${await f.readAsString()}';
+      notifyListeners();
+    }
+  }
+
+  Future<void> _remember(String value) async {
+    actualEngine = value;
+    try {
+      await File('${models.root.path}/last-engine.txt')
+          .writeAsString(value, flush: true);
+    } catch (_) {
+      /* optional history must not turn a valid local reading into a cloud upload */
+    }
+    notifyListeners();
+  }
 
   Future<T> _exclusive<T>(Future<T> Function() work) {
     final result = _tail.then((_) => work());
@@ -44,13 +71,14 @@ class OcrEngineResolver extends ChangeNotifier {
         }
         if (AppConfig.instance.ocrMode != 'cloud' && models.ready) {
           try {
+            actualEngine = '本地 Xiaomi-OCR-0 · CPU 识别中';
+            notifyListeners();
             _local ??= LocalOcrEngine(models);
             final result = localRunner == null
                 ? await _local!.recognize(image, prompt: prompt)
                 : await localRunner(_local! as LocalOcrEngine);
             validate?.call(result.text);
-            actualEngine = result.engine;
-            notifyListeners();
+            await _remember(result.engine);
             return result;
           } catch (e) {
             await _local?.dispose();
@@ -81,7 +109,7 @@ class OcrEngineResolver extends ChangeNotifier {
         _local = null;
         AppConfig.instance.ocrMode = mode;
         await AppConfig.instance.save();
-        actualEngine = '尚未识别';
+        actualEngine = '';
         notifyListeners();
       });
 

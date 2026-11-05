@@ -35,6 +35,7 @@ class FeishuSyncService with WidgetsBindingObserver {
     WidgetsBinding.instance.addObserver(this);
     DataBus.instance.addListener(_schedule);
     AppConfig.instance.addListener(_schedule);
+    _schedule();
     _timer ??= Timer.periodic(const Duration(seconds: 30), (_) {
       if (_foreground && AppConfig.instance.feishuEnabled) {
         sync().catchError((Object _) {});
@@ -45,7 +46,8 @@ class FeishuSyncService with WidgetsBindingObserver {
   void _schedule() {
     _debounce?.cancel();
     if (!_busy && _foreground && AppConfig.instance.feishuEnabled) {
-      _debounce = Timer(const Duration(seconds: 3), () => sync().catchError((Object _) {}));
+      _debounce = Timer(
+          const Duration(seconds: 3), () => sync().catchError((Object _) {}));
     }
   }
 
@@ -57,7 +59,8 @@ class FeishuSyncService with WidgetsBindingObserver {
     }
   }
 
-  Future<File> _baseline() async => File('${AppConfig.instance.configPath}.feishu-baseline');
+  Future<File> _baseline() async =>
+      File('${AppConfig.instance.configPath}.feishu-baseline');
 
   Future<Map<String, String>> _local() async {
     final db = await DatabaseHelper.instance.database;
@@ -65,7 +68,8 @@ class FeishuSyncService with WidgetsBindingObserver {
     await db.transaction((txn) async {
       for (final table in tables) {
         for (final row in await txn.query(table)) {
-          result['$table/${row[table == 'rooms' ? 'room_no' : 'id']}'] = canonicalJson(row);
+          result['$table/${row[table == 'rooms' ? 'room_no' : 'id']}'] =
+              canonicalJson(row);
         }
       }
     });
@@ -74,7 +78,8 @@ class FeishuSyncService with WidgetsBindingObserver {
       for (final line in await File(path).readAsLines()) {
         final i = line.indexOf('=');
         if (i <= 0 || line.trimLeft().startsWith('#')) continue;
-        result['config/${line.substring(0, i).trim()}'] = canonicalJson(line.substring(i + 1));
+        result['config/${line.substring(0, i).trim()}'] =
+            canonicalJson(line.substring(i + 1));
       }
     }
     return result;
@@ -82,11 +87,14 @@ class FeishuSyncService with WidgetsBindingObserver {
 
   String _text(Object? value) {
     if (value is String) return value;
-    if (value is List) return value.map((e) => e is Map ? e['text'] ?? '' : '').join();
+    if (value is List) {
+      return value.map((e) => e is Map ? e['text'] ?? '' : '').join();
+    }
     throw StateError('飞书同步字段类型不正确');
   }
 
-  Future<({Map<String, String> values, Map<String, String> ids})> _remote() async {
+  Future<({Map<String, String> values, Map<String, String> ids})>
+      _remote() async {
     final values = <String, String>{}, ids = <String, String>{};
     for (final record in await _api!.list('$_root/records')) {
       final fields = record['fields'] as Map<String, dynamic>;
@@ -94,7 +102,8 @@ class FeishuSyncService with WidgetsBindingObserver {
       final key = _text(fields['rental_key']);
       if (!key.startsWith(prefix)) continue;
       final short = key.substring(prefix.length);
-      if (!RegExp(r'^(rooms|people|payments|receipts|config)/[^\r\n]+$').hasMatch(short)) {
+      if (!RegExp(r'^(rooms|people|payments|receipts|config)/[^\r\n]+$')
+          .hasMatch(short)) {
         throw StateError('飞书同步键格式不合法，已停止同步');
       }
       if (ids.containsKey(short)) throw StateError('飞书存在重复同步键，已停止同步');
@@ -110,23 +119,37 @@ class FeishuSyncService with WidgetsBindingObserver {
     for (final name in ['rental_key', 'rental_json']) {
       final existing = fields.where((f) => f['field_name'] == name);
       if (existing.isEmpty) {
-        await _api!.request('$_root/fields', method: 'POST', body: {'field_name': name, 'type': 1});
+        await _api!.request('$_root/fields',
+            method: 'POST', body: {'field_name': name, 'type': 1});
       } else if (existing.first['type'] != 1) {
         throw StateError('$name 必须是多行文本字段');
       }
     }
   }
 
-  Future<void> sync({bool initialize = false, bool download = false}) async {
+  Future<void> sync(
+      {bool initialize = false,
+      bool download = false,
+      bool pullOnly = false}) async {
     if (_busy) throw StateError('同步进行中，请稍候');
     final cfg = AppConfig.instance;
-    if ([cfg.feishuAppToken, cfg.feishuTableId, cfg.feishuClientId, cfg.feishuClientSecret].any((e) => e.trim().isEmpty)) {
+    if ([
+      cfg.feishuAppToken,
+      cfg.feishuTableId,
+      cfg.feishuClientId,
+      cfg.feishuClientSecret
+    ].any((e) => e.trim().isEmpty)) {
       throw StateError('请先填写完整飞书参数');
     }
     _busy = true;
     status.value = '同步中…';
     try {
-      final identity = canonicalJson([cfg.feishuAppToken, cfg.feishuTableId, cfg.feishuClientId, cfg.feishuClientSecret]);
+      final identity = canonicalJson([
+        cfg.feishuAppToken,
+        cfg.feishuTableId,
+        cfg.feishuClientId,
+        cfg.feishuClientSecret
+      ]);
       if (_identity != identity) {
         _api = FeishuApi(cfg.feishuClientId, cfg.feishuClientSecret);
         _identity = identity;
@@ -148,46 +171,81 @@ class FeishuSyncService with WidgetsBindingObserver {
         if (!download && (!initialize || remote.values.isNotEmpty)) {
           throw StateError('此设备尚未建立同步基线。首次上传仅允许空同步表；已有远端数据请使用“从飞书初始化缓存”');
         }
-        if (await BackupService.instance.createBackupFile() == null) throw StateError('同步前备份失败');
+        if (await BackupService.instance.createBackupFile() == null) {
+          throw StateError('同步前备份失败');
+        }
       }
-      if (download && remote.values.isEmpty) throw StateError('飞书同步表为空，不能清空本地缓存');
-      if (download && await BackupService.instance.createBackupFile() == null) throw StateError('下载前备份失败');
-      final merged = download ? remote.values : mergeSync(base, local, remote.values);
+      if (download && remote.values.isEmpty) {
+        throw StateError('飞书同步表为空，不能清空本地缓存');
+      }
+      if (download && await BackupService.instance.createBackupFile() == null) {
+        throw StateError('下载前备份失败');
+      }
+      final plan = planSync(base, local, remote.values,
+          pullOnly: pullOnly, replace: download);
+      final merged = plan.values;
+      final uploads = plan.writes.length;
+      final downloads = {...merged.keys, ...local.keys}
+          .where((k) => merged[k] != local[k])
+          .length;
       await _validate(merged);
       // Do not overwrite typing or changes made while fetching the remote state.
-      if (_editing ||
-          canonicalJson(await _local()) != canonicalJson(local)) {
+      if (_editing || canonicalJson(await _local()) != canonicalJson(local)) {
         throw StateError('本地正在编辑或已发生变化，本轮同步取消，稍后重试');
       }
       final check = await _remote();
-      if (canonicalJson(check.values) != canonicalJson(remote.values)) throw StateError('飞书数据已变化，请重试');
+      if (canonicalJson(check.values) != canonicalJson(remote.values)) {
+        throw StateError('飞书数据已变化，请重试');
+      }
       // Save the old baseline before starting remote writes. If the network
       // fails after some rows, the same three-way merge can safely retry.
       if (!hasBase && !download) {
-        await file.writeAsString(jsonEncode({'target': '${cfg.feishuAppToken}/${cfg.feishuTableId}', 'values': base}), flush: true);
+        await file.writeAsString(
+            jsonEncode({
+              'target': '${cfg.feishuAppToken}/${cfg.feishuTableId}',
+              'values': base
+            }),
+            flush: true);
       }
-      for (final key in {...remote.values.keys, ...merged.keys}) {
+      for (final key in plan.writes) {
         if (remote.values[key] == merged[key]) continue;
         final id = remote.ids[key];
         if (!merged.containsKey(key)) {
           await _api!.request('$_root/records/$id', method: 'DELETE');
         } else {
-          final body = {'fields': {'rental_key': '$prefix$key', 'rental_json': merged[key]}};
-          await _api!.request(id == null ? '$_root/records' : '$_root/records/$id',
-              method: id == null ? 'POST' : 'PUT', body: body);
+          final body = {
+            'fields': {'rental_key': '$prefix$key', 'rental_json': merged[key]}
+          };
+          await _api!.request(
+              id == null ? '$_root/records' : '$_root/records/$id',
+              method: id == null ? 'POST' : 'PUT',
+              body: body);
         }
       }
       final verified = await _remote();
-      if (canonicalJson(verified.values) != canonicalJson(merged)) throw StateError('远端回读不一致，已停止更新本地');
-      if (canonicalJson(await _local()) != canonicalJson(local)) throw StateError('上传期间本地有新修改，已保留本地，下一轮重新核对');
+      if (canonicalJson(verified.values) !=
+          canonicalJson(pullOnly ? remote.values : merged)) {
+        throw StateError('远端回读不一致，已停止更新本地');
+      }
+      if (canonicalJson(await _local()) != canonicalJson(local)) {
+        throw StateError('上传期间本地有新修改，已保留本地，下一轮重新核对');
+      }
       if (canonicalJson(merged) != canonicalJson(local)) {
-        if (await BackupService.instance.createBackupFile() == null) throw StateError('更新缓存前备份失败');
+        if (await BackupService.instance.createBackupFile() == null) {
+          throw StateError('更新缓存前备份失败');
+        }
         await _apply(merged, local);
       }
       final temporary = File('${file.path}.tmp');
-      await temporary.writeAsString(jsonEncode({'target': '${cfg.feishuAppToken}/${cfg.feishuTableId}', 'values': merged}), flush: true);
+      await temporary.writeAsString(
+          jsonEncode({
+            'target': '${cfg.feishuAppToken}/${cfg.feishuTableId}',
+            'values': plan.baseline
+          }),
+          flush: true);
       await temporary.rename(file.path);
-      status.value = '同步成功 · ${DateTime.now().toLocal().toString().substring(0, 19)}';
+      status.value =
+          '${pullOnly ? '云端更新完成' : '双向同步完成'} · 上传 ${pullOnly ? 0 : uploads} 项 / 下载 $downloads 项';
     } catch (e) {
       status.value = e is StateError ? e.message : e.toString();
       rethrow;
@@ -198,8 +256,9 @@ class FeishuSyncService with WidgetsBindingObserver {
 
   bool get _editing {
     final context = FocusManager.instance.primaryFocus?.context;
-    return context != null && (context.widget is EditableText ||
-        context.findAncestorWidgetOfExactType<EditableText>() != null);
+    return context != null &&
+        (context.widget is EditableText ||
+            context.findAncestorWidgetOfExactType<EditableText>() != null);
   }
 
   Future<void> _validate(Map<String, String> values) async {
@@ -207,51 +266,69 @@ class FeishuSyncService with WidgetsBindingObserver {
     final columns = <String, Set<String>>{};
     for (final table in tables) {
       columns[table] = (await db.rawQuery('PRAGMA table_info($table)'))
-          .map((r) => r['name'] as String).toSet();
+          .map((r) => r['name'] as String)
+          .toSet();
     }
     final rooms = <String>{};
     final configKeys = <String>{};
     for (final entry in values.entries) {
       final slash = entry.key.indexOf('/');
       if (slash <= 0) throw StateError('无效同步键');
-      final type = entry.key.substring(0, slash), id = entry.key.substring(slash + 1);
+      final type = entry.key.substring(0, slash),
+          id = entry.key.substring(slash + 1);
       final value = jsonDecode(entry.value);
       if (type == 'config') {
-        if (!RegExp(r'^[a-z_]+$').hasMatch(id) || value is! String ||
-            value.contains('\n') || value.contains('\r')) {
+        if (!RegExp(r'^[a-z_]+$').hasMatch(id) ||
+            value is! String ||
+            value.contains('\n') ||
+            value.contains('\r')) {
           throw StateError('无效配置记录');
         }
         configKeys.add(id);
         continue;
       }
-      if (!tables.contains(type) || value is! Map ||
+      if (!tables.contains(type) ||
+          value is! Map ||
           !value.keys.every(columns[type]!.contains)) {
         throw StateError('飞书记录字段与当前数据库不匹配');
       }
       final pk = type == 'rooms' ? 'room_no' : 'id';
-      if ('${value[pk]}' != id || (type != 'rooms' && value['id'] is! int)) throw StateError('不能更改同步记录主键');
+      if ('${value[pk]}' != id || (type != 'rooms' && value['id'] is! int)) {
+        throw StateError('不能更改同步记录主键');
+      }
       if (type == 'rooms') rooms.add(id);
     }
-    if (!configKeys.containsAll(['water_price', 'elec_price', 'feishu_app_token', 'feishu_table_id'])) {
+    if (!configKeys.containsAll(
+        ['water_price', 'elec_price', 'feishu_app_token', 'feishu_table_id'])) {
       throw StateError('同步配置不完整，拒绝覆盖');
     }
-    for (final entry in values.entries.where((e) => !e.key.startsWith('config/') && !e.key.startsWith('rooms/'))) {
-      if (!rooms.contains((jsonDecode(entry.value) as Map)['room_no'])) throw StateError('飞书记录引用不存在的房间');
+    for (final entry in values.entries.where(
+        (e) => !e.key.startsWith('config/') && !e.key.startsWith('rooms/'))) {
+      if (!rooms.contains((jsonDecode(entry.value) as Map)['room_no'])) {
+        throw StateError('飞书记录引用不存在的房间');
+      }
     }
   }
 
-  Future<void> _apply(Map<String, String> values, Map<String, String> expected) async {
+  Future<void> _apply(
+      Map<String, String> values, Map<String, String> expected) async {
     final db = await DatabaseHelper.instance.database;
     // Validate all JSON before touching the cache. SQLite enforces columns/FKs.
     final rows = {for (final table in tables) table: <Map<String, Object?>>[]};
     for (final entry in values.entries) {
       final type = entry.key.split('/').first;
-      if (rows.containsKey(type)) rows[type]!.add(Map<String, Object?>.from(jsonDecode(entry.value) as Map));
+      if (rows.containsKey(type)) {
+        rows[type]!
+            .add(Map<String, Object?>.from(jsonDecode(entry.value) as Map));
+      }
     }
     final config = StringBuffer();
-    for (final entry in values.entries.where((e) => e.key.startsWith('config/'))) {
+    for (final entry
+        in values.entries.where((e) => e.key.startsWith('config/'))) {
       final value = jsonDecode(entry.value);
-      if (value is! String || value.contains('\n') || value.contains('\r')) throw StateError('飞书配置格式不合法');
+      if (value is! String || value.contains('\n') || value.contains('\r')) {
+        throw StateError('飞书配置格式不合法');
+      }
       config.writeln('${entry.key.substring(7)}=$value');
     }
     if (config.isEmpty) throw StateError('飞书配置缺失，取消更新缓存');
@@ -265,15 +342,23 @@ class FeishuSyncService with WidgetsBindingObserver {
         final current = <String, String>{};
         for (final table in tables) {
           for (final row in await txn.query(table)) {
-            current['$table/${row[table == 'rooms' ? 'room_no' : 'id']}'] = canonicalJson(row);
+            current['$table/${row[table == 'rooms' ? 'room_no' : 'id']}'] =
+                canonicalJson(row);
           }
         }
-        final expectedDb = Map<String, String>.fromEntries(expected.entries.where((e) => !e.key.startsWith('config/')));
-        if (canonicalJson(current) != canonicalJson(expectedDb)) throw StateError('本地已发生变化，取消覆盖');
-      for (final table in tables.reversed) { await txn.delete(table); }
-      for (final table in tables) {
-        for (final row in rows[table]!) { await txn.insert(table, row); }
-      }
+        final expectedDb = Map<String, String>.fromEntries(
+            expected.entries.where((e) => !e.key.startsWith('config/')));
+        if (canonicalJson(current) != canonicalJson(expectedDb)) {
+          throw StateError('本地已发生变化，取消覆盖');
+        }
+        for (final table in tables.reversed) {
+          await txn.delete(table);
+        }
+        for (final table in tables) {
+          for (final row in rows[table]!) {
+            await txn.insert(table, row);
+          }
+        }
         await temp.rename(path);
       });
     } catch (_) {

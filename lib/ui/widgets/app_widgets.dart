@@ -24,33 +24,108 @@ bool useStackedLayout(BuildContext context) =>
 /// 全局 Snackbar 状态（每个 MiuixScaffold 都挂载同一个 Host）
 class AppSnackbar {
   AppSnackbar._();
-
-  static final MiuixSnackbarHostState state = MiuixSnackbarHostState();
-
-  /// 显示一条轻提示
-  static void show(String message,
-      {String? actionLabel, VoidCallback? onAction}) {
-    state.showSnackbar(message, actionLabel: actionLabel);
+  static final message = ValueNotifier<String>('');
+  static String? actionLabel;
+  static VoidCallback? action;
+  static Timer? _timer;
+  static void show(String text, {String? actionLabel, VoidCallback? onAction}) {
+    _timer?.cancel();
+    AppSnackbar.actionLabel = actionLabel;
+    action = onAction;
+    message.value = text;
+    _timer = Timer(
+        Duration(seconds: text.length > 45 ? 5 : 3), () => message.value = '');
   }
 }
 
-/// Snackbar 抬升量：悬浮玻璃导航条顶距屏底约 90，加上 16 间隙，再减去
-/// scaffold 底部窗口内边距（vendor 布局已叠加该 inset），保证提示条完整
-/// 显示在导航条上方、不被遮挡。
 const double kSnackbarLift = 85;
 
-/// 统一的 Snackbar 宿主（全 App 16 处页面共用）：
-/// MiuixScaffold 的 bottomBar 槽位未使用（导航条是 AppShell 悬浮自绘），
-/// vendor 只按安全区避让会被导航盖住，这里整体上抬 [kSnackbarLift]。
 class AppSnackbarHost extends StatelessWidget {
   const AppSnackbarHost({super.key});
+  @override
+  Widget build(BuildContext context) => const SizedBox.shrink();
+}
 
+/// One process-wide toast above routes and dialogs, with a compact glass surface.
+class AppToastLayer extends StatelessWidget {
+  const AppToastLayer({super.key, required this.child});
+  final Widget child;
   @override
   Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: kSnackbarLift),
-      child: MiuixSnackbarHost(state: AppSnackbar.state),
-    );
+    final c = MiuixTheme.of(context).colors;
+    return Stack(children: [
+      child,
+      Positioned(
+          left: 24,
+          right: 24,
+          bottom: MediaQuery.viewInsetsOf(context).bottom > 0
+              ? MediaQuery.viewInsetsOf(context).bottom + 16
+              : kGlassNavClearance + MediaQuery.paddingOf(context).bottom,
+          child: ValueListenableBuilder<String>(
+              valueListenable: AppSnackbar.message,
+              builder: (_, message, __) => AnimatedSwitcher(
+                  duration: const Duration(milliseconds: 180),
+                  transitionBuilder: (child, animation) => FadeTransition(
+                      opacity: animation,
+                      child: SlideTransition(
+                          position:
+                              Tween(begin: const Offset(0, .12), end: Offset.zero)
+                                  .animate(animation),
+                          child: child)),
+                  child: message.isEmpty
+                      ? const SizedBox.shrink()
+                      : Semantics(
+                          liveRegion: true,
+                          child: Align(
+                              key: ValueKey(message),
+                              child: ConstrainedBox(
+                                  constraints:
+                                      const BoxConstraints(maxWidth: 400),
+                                  child: ClipRRect(
+                                      borderRadius: BorderRadius.circular(20),
+                                      child: BackdropFilter(
+                                          filter: ImageFilter.blur(
+                                              sigmaX: 24, sigmaY: 24),
+                                          child: Container(
+                                              padding:
+                                                  const EdgeInsets.symmetric(
+                                                      horizontal: 16,
+                                                      vertical: 13),
+                                              decoration: BoxDecoration(
+                                                  color: c.surface
+                                                      .withValues(alpha: .94),
+                                                  borderRadius:
+                                                      BorderRadius.circular(20),
+                                                  border: Border.all(
+                                                      color: c.primary.withValues(alpha: .16))),
+                                              child: Row(mainAxisSize: MainAxisSize.min, children: [
+                                                Icon(Icons.info_outline_rounded,
+                                                    size: 19, color: c.primary),
+                                                const SizedBox(width: 10),
+                                                Flexible(
+                                                    child: Text(message,
+                                                        style: TextStyle(
+                                                            fontFamily:
+                                                                'MiSans',
+                                                            fontSize: 13,
+                                                            height: 1.4,
+                                                            color: c.onSurface,
+                                                            decoration:
+                                                                TextDecoration
+                                                                    .none))),
+                                                if (AppSnackbar.actionLabel !=
+                                                    null)
+                                                  TextButton(
+                                                      onPressed: () {
+                                                        AppSnackbar.action
+                                                            ?.call();
+                                                        AppSnackbar
+                                                            .message.value = '';
+                                                      },
+                                                      child: Text(AppSnackbar
+                                                          .actionLabel!)),
+                                              ]))))))))))
+    ]);
   }
 }
 

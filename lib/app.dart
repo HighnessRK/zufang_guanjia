@@ -5,6 +5,7 @@ import 'package:flutter_miuix/miuix.dart';
 import 'core/constants/app_constants.dart';
 import 'ui/shell/app_shell.dart';
 import 'ui/widgets/app_editable_field.dart';
+import 'ui/widgets/app_widgets.dart';
 
 /// 应用根 Widget：接入 miuix 主题（HyperOS 原生风格）。
 class RentalApp extends StatelessWidget {
@@ -38,6 +39,17 @@ class RentalApp extends StatelessWidget {
                 brightness: theme.brightness,
               ),
               scaffoldBackgroundColor: theme.colors.background,
+              dialogTheme: DialogThemeData(
+                  shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(26)),
+                  backgroundColor: theme.colors.surface,
+                  elevation: 0),
+              textButtonTheme: TextButtonThemeData(
+                  style: TextButton.styleFrom(
+                      shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(14)),
+                      minimumSize: const Size(44, 44),
+                      foregroundColor: theme.colors.primary)),
               splashFactory: NoSplash.splashFactory,
               highlightColor: Colors.transparent,
             ),
@@ -51,13 +63,14 @@ class RentalApp extends StatelessWidget {
               // 又保证它盖在悬浮液态玻璃导航栏之上。
               // Popups are hosted above Navigator. They need their own ancestor
               // Overlay so selection toolbars appear above, not behind dialogs.
-              return AppClipboardOverlay(
+              return AppToastLayer(
+                  child: AppClipboardOverlay(
                 child: SelectionArea(
                   child: MiuixPopupHost(
                     child: child ?? const SizedBox.shrink(),
                   ),
                 ),
-              );
+              ));
             },
             home: const AppShell(),
           );
