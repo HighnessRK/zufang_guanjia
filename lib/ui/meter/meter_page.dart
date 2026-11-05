@@ -10,7 +10,7 @@ import '../../data/models/room.dart';
 import '../../data/repository/payment_repository.dart';
 import '../../data/repository/room_repository.dart';
 import '../../services/data_bus.dart';
-import '../../services/llm_service.dart';
+import '../../services/recognition_tasks.dart';
 import '../settings/llm_settings_page.dart';
 import '../shell/app_shell.dart';
 import '../widgets/app_widgets.dart';
@@ -47,14 +47,25 @@ class _MeterPageState extends State<MeterPage> {
   /// 每间房的周期待收水电费（未结清 water/elec 流水聚合，只读状态）
   final Map<String, int> _owed = <String, int>{};
 
-  /// 拍照识别进行中（AI 按钮置灰 + 转圈）
-  bool _recognizing = false;
-
-  /// 正在批量识别的楼层（置灰该层按钮）
-  String? _busyFloor;
-
-  /// 正在单房间识别的房号（置灰该行相机按钮）
-  String? _recognizingRoom;
+  final _tasks = RecognitionTasks.instance;
+  final Set<String> _appliedResults = {};
+  void _onTasks() {
+    if (!mounted) return;
+    for (final entry in _tasks.results.entries.toList()) {
+      final ctrl = _elecCtrls[entry.key];
+      if (ctrl == null || _appliedResults.contains(entry.key)) continue;
+      if (ctrl.text == entry.value['baseline'] ||
+          ctrl.text == '${entry.value['value']}') {
+        ctrl.text = '${entry.value['value']}';
+        _appliedResults.add(entry.key);
+      }
+    }
+    if (_tasks.lastError.isNotEmpty) {
+      AppSnackbar.show(_tasks.lastError);
+      _tasks.lastError = '';
+    }
+    setState(() {});
+  }
 
   /// 整层录水表批量输入表单
   bool _waterSheetVisible = false;
@@ -69,6 +80,12 @@ class _MeterPageState extends State<MeterPage> {
   @override
   void initState() {
     super.initState();
+    _tasks.addListener(_onTasks);
+    _tasks.init().then((_) {
+      if (mounted) _onTasks();
+    }).catchError((Object e) {
+      debugPrint('识别结果读取失败：$e');
+    });
     _load();
     // MCP / 其它入口改动读数后立刻刷新（详见 [DataBus]）
     DataBus.instance.addListener(_onDataBus);
@@ -76,6 +93,7 @@ class _MeterPageState extends State<MeterPage> {
 
   @override
   void dispose() {
+    _tasks.removeListener(_onTasks);
     DataBus.instance.removeListener(_onDataBus);
     for (final TextEditingController c in _elecCtrls.values) {
       c.dispose();
@@ -135,6 +153,7 @@ class _MeterPageState extends State<MeterPage> {
       _rooms = rooms;
       _loading = false;
     });
+    _onTasks();
   }
 
   /// 任意输入变化 → 重算费用行与「修改计数」
@@ -249,120 +268,27 @@ class _MeterPageState extends State<MeterPage> {
   }
 
   Future<void> _captureRoomElec(Room room) async {
-    if (!await _ensureLlmConfig()) return;
-    if (_recognizing) return;
-
-    try {
-      final XFile? shot = await _pickImage(1440, 85);
-      if (shot == null) return; // 用户取消拍照
-
-      setState(() {
-        _recognizing = true;
-        _recognizingRoom = room.roomNo;
-      });
-      AppSnackbar.show('正在识别 ${room.roomNo} 电表…');
-
-      final bytes = await shot.readAsBytes();
-      final int reading = await LlmService.recognizeElecMeter(bytes);
-
-      if (!mounted) return;
-      _elecCtrls[room.roomNo]!.text = '$reading'; // 触发监听 → 自动重算
-      AppSnackbar.show('识别成功：${room.roomNo} 本期电表 $reading 度');
-    } on StateError catch (e) {
-      AppSnackbar.show(e.message);
-    } catch (e) {
-      final String msg = '$e';
-      AppSnackbar.show('识别失败：${msg.length > 90 ? msg.substring(0, 90) : msg}');
-    } finally {
-      if (mounted) {
-        setState(() {
-          _recognizing = false;
-          _recognizingRoom = null;
-        });
-      }
-    }
+    if (!await _ensureLlmConfig() || !mounted) return;
+    await _captureRooms([room.roomNo]);
   }
 
-  //===================== 整层批量拍电表（AI 按位置识别） =====================
-
-  /// 整层拍电表：内置位置序提示词识别 → **自动填入**本层输入框。
-  ///
-  /// 【映射规则】电表按「每行从左到右、行与行从上到下」排布，与本层
-  /// 房间号升序一一对应（4 块表 → x01/x02/x03/x05，5 块表 →
-  /// x01/x02/x03/x05/x06，房号本就没有 04 所以天然跳过）。
-  /// 模型返回的第 n 个读数直接落到第 n 个房间，不再弹核对表单。
   Future<void> _captureFloorElec(String floor) async {
-    if (!await _ensureLlmConfig()) return;
-    if (_recognizing) return;
+    if (!await _ensureLlmConfig() || !mounted) return;
+    await _captureRooms(_roomsOf(floor).map((r) => r.roomNo).toList());
+  }
 
-    final List<Room> rooms = _roomsOf(floor);
-    if (rooms.isEmpty) {
-      AppSnackbar.show('本层没有房间，无法填入');
-      return;
-    }
-    final List<String> roomNos = rooms.map((Room r) => r.roomNo).toList();
-
+  Future<void> _captureRooms(List<String> rooms) async {
+    if (rooms.isEmpty || rooms.any(_tasks.busy)) return;
     try {
-      final XFile? shot = await _pickImage(1920, 88);
-      if (shot == null) return;
-
-      setState(() {
-        _recognizing = true;
-        _busyFloor = floor;
-      });
-      AppSnackbar.show('大模型正在识别本层电表…');
-
-      final bytes = await shot.readAsBytes();
-      final List<int> readings = await LlmService.recognizeFloorMeterReadings(
-        bytes,
-        roomNos: roomNos,
-      );
-
-      if (!mounted) return;
-
-      // 按下标对位填入：读数 < 0 表示该格模型没读出来，跳过
-      final List<String> filled = <String>[];
-      int changed = 0;
-      setState(() {
-        final int n =
-            readings.length < roomNos.length ? readings.length : roomNos.length;
-        for (int i = 0; i < n; i++) {
-          final int v = readings[i];
-          if (v < 0) continue;
-          final String roomNo = roomNos[i];
-          final TextEditingController? ctrl = _elecCtrls[roomNo];
-          if (ctrl == null) continue;
-          if (ctrl.text.trim() != '$v') changed++;
-          ctrl.text = '$v';
-          filled.add('$roomNo→$v');
-        }
-      });
-
-      final String summary = filled.isEmpty ? '（无有效读数）' : filled.join(' ');
-      if (filled.isEmpty) {
-        AppSnackbar.show('未能读出任何有效读数，请重拍或换个角度');
-      } else if (changed == 0) {
-        AppSnackbar.show('识别值与当前输入一致，没有变化：$summary');
-      } else if (readings.length != roomNos.length) {
-        AppSnackbar.show('识别到 ${readings.length} 块表，本层有 ${roomNos.length} 间房，'
-            '已按位置顺序填入 ${filled.length} 间（其中 $changed 间有变化）：'
-            '$summary，请核对');
-      } else {
-        AppSnackbar.show('已按位置顺序填入 ${filled.length} 间（其中 $changed 间有变化），'
-            '请核对后保存：$summary');
-      }
-    } on StateError catch (e) {
-      AppSnackbar.show(e.message);
+      final shot = await _pickImage(3200, 95);
+      if (shot == null || !mounted) return;
+      final baseline = {
+        for (final room in rooms) room: _elecCtrls[room]?.text ?? ''
+      };
+      await _tasks.submit(await shot.readAsBytes(), rooms, baseline);
+      AppSnackbar.show('已加入后台识别，完成后自动填入；请核对后保存');
     } catch (e) {
-      final String msg = '$e';
-      AppSnackbar.show('识别失败：${msg.length > 90 ? msg.substring(0, 90) : msg}');
-    } finally {
-      if (mounted) {
-        setState(() {
-          _recognizing = false;
-          _busyFloor = null;
-        });
-      }
+      if (mounted) AppSnackbar.show('无法开始识别：$e');
     }
   }
 
@@ -474,6 +400,10 @@ class _MeterPageState extends State<MeterPage> {
 
     if (!mounted) return;
     AppSnackbar.show('已保存 $count 间房的抄表数据，水电费合计 ¥$total');
+    for (final room in _appliedResults.toList()) {
+      await _tasks.acknowledge(room);
+    }
+    _appliedResults.clear();
     await _load(afterSave: true);
   }
 
@@ -509,6 +439,27 @@ class _MeterPageState extends State<MeterPage> {
         }
         return Stack(
           children: <Widget>[
+            if (_tasks.tasks.isNotEmpty || _tasks.results.isNotEmpty)
+              GlassCard(
+                  padding: const EdgeInsets.all(16),
+                  child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        for (final task in _tasks.tasks)
+                          MiuixText('${task.rooms.join('、')} · ${task.state}',
+                              fontSize: 12),
+                        for (final entry in _tasks.results.entries.toList())
+                          MiuixArrowPreference(
+                              title:
+                                  '${entry.key} 识别读数：${entry.value['value']}',
+                              summary: '点击填入 · 请核对后保存',
+                              onClick: () {
+                                _elecCtrls[entry.key]?.text =
+                                    '${entry.value['value']}';
+                                setState(() => _appliedResults.add(entry.key));
+                              }),
+                      ])),
+
             // 极光背景已由 AuroraScaffold 铺满整页（含顶栏区）
             // MiuixScrollBehaviorListener：把列表滚动桥接给顶栏（大标题折叠）
             MiuixScrollBehaviorListener(
@@ -630,7 +581,7 @@ class _MeterPageState extends State<MeterPage> {
                   c,
                   icon: Icons.photo_camera_rounded,
                   label: 'AI拍电表',
-                  busy: _recognizing && _busyFloor == floor,
+                  busy: _roomsOf(floor).any((r) => _tasks.busy(r.roomNo)),
                   colors: const <Color>[Color(0xFF3482FF), Color(0xFF7B5CFF)],
                   onTap: () => _captureFloorElec(floor),
                 ),
@@ -805,7 +756,7 @@ class _MeterPageState extends State<MeterPage> {
           const SizedBox(height: 14),
           reading('电表读数', ec, const Color(0xFFFFB340),
               action: _buildFieldCamera(c,
-                  busy: _recognizing && _recognizingRoom == room.roomNo,
+                  busy: _tasks.busy(room.roomNo),
                   onTap: () => _captureRoomElec(room))),
           const SizedBox(height: 12),
           reading('水表读数', wc, const Color(0xFF2A7BFF)),
@@ -916,7 +867,7 @@ class _MeterPageState extends State<MeterPage> {
                       size: 15, color: Color(0xFFFFB340)),
                   trailing: _buildFieldCamera(
                     c,
-                    busy: _recognizing && _recognizingRoom == room.roomNo,
+                    busy: _tasks.busy(room.roomNo),
                     onTap: () => _captureRoomElec(room),
                   ),
                 ),

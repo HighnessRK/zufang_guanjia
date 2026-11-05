@@ -127,3 +127,24 @@ unrecognized chips are not presumed supported. No NPU speedup is claimed.
 Automatic tests do not prove GGUF compatibility, hardware acceleration, meter
 accuracy, thermal stability or native crash recovery. Those require real weights
 and actual hardware. No production release until these acceptance gates pass.
+
+
+## v1.2.5 background recognition
+
+User-submitted images run in an app-scoped queue. Page disposal does not own
+or cancel the job. The local engine serializes work; other meters may be queued.
+Only the selected image is passed to the configured local/cloud recognition path.
+An Android specialUse foreground service with a low-priority notification and
+bounded partial wake lock protects work during app switches; it stops when the
+queue drains. The Flutter engine is retained across activity recreation.
+Completed readings are persisted under application support until the user applies
+and saves them; automatic filling checks the captured input baseline so editing
+while recognition runs does not overwrite newer input. Force-stop/process death
+can interrupt in-flight jobs; this release does not claim to restart such jobs.
+Startup model hashing runs in a worker isolate. While hashes are being checked,
+the settings panel shows checking, not missing; both final files must still pass
+SHA-256 verification. No validation is skipped to manufacture a ready state.
+Multi-meter recognition keeps window crops as the preferred path, tries inverted
+contrast for dark LCD windows, and falls back to a strict full-image JSON array
+when trusted windows cannot be located. Unknown positions stay null; no grid or
+synthetic readings are inserted.

@@ -106,7 +106,7 @@ class UpdateService {
   }
 
   /// 可识别的变更类型标签（与「更新日志」页配色一致）
-  static const List<String> kNoteTypes = <String>['新增', '优化', '修复', '变更', '安全'];
+  static const List<String> kNoteTypes = <String>['新增', '优化', '修复'];
 
   /// 解析 Release 说明正文为条目列表。
   ///
@@ -163,7 +163,7 @@ class UpdateService {
         }
       }
       if (line.trim().isEmpty) continue;
-      out.add(UpdateNoteEntry(type, line.trim()));
+      out.add(UpdateNoteEntry(kNoteTypes.contains(type) ? type : '优化', line.trim()));
     }
     return out;
   }

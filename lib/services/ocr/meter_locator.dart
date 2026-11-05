@@ -22,6 +22,15 @@ class MeterWindow {
 /// 整图识别，不能凭空猜测位置或读数。
 List<MeterWindow>? locateMeterWindows(img.Image source,
     {required int expected}) {
+  final bright = _locateBright(source, expected: expected);
+  if (bright != null) return bright;
+  // LCD windows and dark faceplates also form bounded rectangles. Try inverted
+  // contrast with the same count/geometry checks; never invent a grid of readings.
+  final inverse = img.invert(img.Image.from(source));
+  return _locateBright(inverse, expected: expected);
+}
+
+List<MeterWindow>? _locateBright(img.Image source, {required int expected}) {
   if (expected <= 0 || source.width < 32 || source.height < 32) {
     return null;
   }
@@ -62,7 +71,7 @@ List<MeterWindow>? locateMeterWindows(img.Image source,
     final double aspect = box.width / math.max(1, box.height);
     final double area = bw * bh;
     return bw >= 0.05 &&
-        bw <= 0.32 &&
+        bw <= (expected <= 2 ? 0.6 : 0.32) &&
         bh >= 0.015 &&
         bh <= 0.26 &&
         aspect >= 0.9 &&

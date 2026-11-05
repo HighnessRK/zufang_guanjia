@@ -8,6 +8,9 @@ import 'package:path_provider/path_provider.dart';
 
 import 'model_catalog.dart';
 
+Future<String> _modelHash(String path) async =>
+    (await sha256.bind(File(path).openRead()).first).toString().toLowerCase();
+
 enum ModelStatus { missing, downloading, paused, verifying, ready, corrupt }
 
 /// Only user-triggered downloads. Partial files survive process termination;
@@ -25,6 +28,7 @@ class ModelManager extends ChangeNotifier {
   Future<void> _maintenance = Future<void>.value();
   HttpClient? _client;
   bool _stop = false;
+  bool initialized = false;
   ModelStatus status = ModelStatus.missing;
   // Whole download: includes every model/projector segment, including resumed bytes.
   int received = 0, total = 0;
@@ -106,20 +110,33 @@ class ModelManager extends ChangeNotifier {
   File file(ModelAsset a) => File('${root.path}/${a.name}');
   File partial(ModelAsset a) => File('${root.path}/${a.name}.part');
 
-  Future<void> init() => _initializing ??= _init();
+  Future<void> init() => _initializing ??= _initialize();
+  Future<void> _initialize() async {
+    status = ModelStatus.verifying;
+    notifyListeners();
+    try {
+      await _init();
+      initialized = true;
+      notifyListeners();
+    } catch (_) {
+      _initializing = null;
+      rethrow;
+    }
+  }
+
   Future<void> _init() async {
     root = directory ??
         Directory(
             '${(await getApplicationSupportDirectory()).path}/models/xiaomi-ocr-0');
     await root.create(recursive: true);
     if (!configured) return;
-    bool all = true, any = false;
+    bool all = true, any = false, corrupt = false;
     for (final a in assets) {
       await _migratePartial(a);
       if (await file(a).exists()) {
         if (!await _valid(file(a), a)) {
           await file(a).delete();
-          status = ModelStatus.corrupt;
+          corrupt = true;
           error = '模型校验失败，请重新下载';
           all = false;
         }
@@ -131,6 +148,7 @@ class ModelManager extends ChangeNotifier {
         any = any || await File('${root.path}/${a.name}.segment-$i').exists();
       }
     }
+    status = corrupt ? ModelStatus.corrupt : ModelStatus.missing;
     if (all) {
       status = ModelStatus.ready;
     } else if (status != ModelStatus.corrupt && any) {
@@ -141,8 +159,7 @@ class ModelManager extends ChangeNotifier {
   }
 
   Future<bool> _valid(File f, ModelAsset a) async =>
-      (await sha256.bind(f.openRead()).first).toString().toLowerCase() ==
-      a.sha256.toLowerCase();
+      await compute(_modelHash, f.path) == a.sha256.toLowerCase();
 
   Future<void> _persist() async {
     await File('${root.path}/state.json').writeAsString(

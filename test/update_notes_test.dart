@@ -14,8 +14,15 @@ void main() {
     expect(parsed.map((e) => e.type), latest.entries.map((e) => e.type));
     final previous =
         AppChangelog.versions.firstWhere((v) => v.version == '1.2.2');
-    expect(previous.entries.length, greaterThan(10));
-    expect(previous.entries.any((e) => e.text.contains('SoC')), isTrue);
+    expect(previous.entries.length, greaterThan(4));
+    for (final version in AppChangelog.versions) {
+      for (final e in version.entries) {
+        expect(['新增', '修复', '优化'], contains(e.type));
+        expect(e.text, isNot(matches(r'SHA256|测试通过|静态检查|check\[|数组越界')));
+      }
+    }
+    final v106 = AppChangelog.versions.firstWhere((v) => v.version == '1.0.6');
+    expect(v106.entries.map((e) => e.type), containsAll(['新增', '优化', '修复']));
   });
   test('描述性新增标题和带后缀分组保留标签及字段下划线', () {
     final notes = UpdateService.parseUpdateNotes(

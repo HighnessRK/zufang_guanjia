@@ -8,9 +8,10 @@ class ModelDownloadProgress extends StatelessWidget {
       required this.received,
       required this.total,
       this.detail = '',
-      this.verifying = false});
+      this.verifying = false,
+      this.label = '总下载进度'});
   final int received, total;
-  final String detail;
+  final String detail, label;
   final bool verifying;
 
   static String formatBytes(int bytes) => bytes >= 1000000000
@@ -30,7 +31,7 @@ class ModelDownloadProgress extends StatelessWidget {
             Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
           Row(children: [
             Expanded(
-                child: MiuixText(verifying ? '正在校验文件' : '总下载进度',
+                child: MiuixText(verifying ? '正在校验文件' : label,
                     fontSize: 12, color: c.onSurfaceVariantSummary)),
             MiuixText(percent,
                 fontSize: 15, fontWeight: FontWeight.w700, color: c.primary),

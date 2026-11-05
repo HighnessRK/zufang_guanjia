@@ -7,6 +7,7 @@ import 'package:url_launcher/url_launcher.dart';
 import '../../services/notification_service.dart';
 import '../../services/update_service.dart';
 import 'app_widgets.dart';
+import 'model_download_progress.dart';
 
 /// 发现新版本弹窗（对标大狗记）：深浅色自适应，更新内容解析为彩色标签，
 ///「立即更新」带下载进度（弹窗不消失、通知栏同步），完成后出现「安装」按钮。
@@ -46,6 +47,7 @@ class _UpdateDialogState extends State<_UpdateDialog> {
     _cancelled = true;
     super.dispose();
   }
+
   late final List<UpdateNoteEntry> _notes =
       UpdateService.parseUpdateNotes(widget.info.notes);
 
@@ -84,7 +86,9 @@ class _UpdateDialogState extends State<_UpdateDialog> {
         url,
         (double p, int received, int total) {
           final DateTime now = DateTime.now();
-          if (p < 1 && now.difference(_lastProgress).inMilliseconds < 150) return;
+          if (p < 1 && now.difference(_lastProgress).inMilliseconds < 150) {
+            return;
+          }
           _lastProgress = now;
           final int pct = (p * 100).clamp(0, 100).round();
           if (mounted) {
@@ -113,14 +117,6 @@ class _UpdateDialogState extends State<_UpdateDialog> {
       }
       await NotificationService.cancelUpdateNotification();
     }
-  }
-
-  /// 下载中按钮文案：「正在下载 12% · 3.2 MB / 23.3 MB」
-  String get _dlLabel {
-    final String sizePart = _total > 0
-        ? ' · ${(_received / 1048576).toStringAsFixed(1)} MB / ${(_total / 1048576).toStringAsFixed(1)} MB'
-        : ' · ${(_received / 1048576).toStringAsFixed(1)} MB';
-    return '正在下载 $_state%$sizePart';
   }
 
   Future<void> _install() async {
@@ -154,8 +150,9 @@ class _UpdateDialogState extends State<_UpdateDialog> {
         ? '更新包：${(_total / 1048576).toStringAsFixed(1)} MB'
         : '更新包大小：暂未获取';
     final List<UpdateNoteEntry> notes = _notes;
-    final String dateText =
-        info.date.isNotEmpty ? (sizeText.isEmpty ? '' : '  ·  ') + info.date : '';
+    final String dateText = info.date.isNotEmpty
+        ? (sizeText.isEmpty ? '' : '  ·  ') + info.date
+        : '';
 
     return Dialog(
       backgroundColor: c.surface,
@@ -191,9 +188,7 @@ class _UpdateDialogState extends State<_UpdateDialog> {
             const SizedBox(height: 18),
             // ====== 更新内容 ======
             MiuixText('更新内容',
-                fontSize: 15,
-                fontWeight: FontWeight.w700,
-                color: c.onSurface),
+                fontSize: 15, fontWeight: FontWeight.w700, color: c.onSurface),
             const SizedBox(height: 12),
             ConstrainedBox(
               constraints: const BoxConstraints(maxHeight: 260),
@@ -234,16 +229,8 @@ class _UpdateDialogState extends State<_UpdateDialog> {
             const SizedBox(height: 20),
             // ====== 底部：按钮 / 进度 ======
             if (_state > 0) ...<Widget>[
-              ClipRRect(
-                borderRadius: BorderRadius.circular(8),
-                child: LinearProgressIndicator(
-                  value: _state / 100,
-                  minHeight: 6,
-                  backgroundColor: c.onSurfaceVariantSummary.withValues(alpha: 0.15),
-                ),
-              ),
-              const SizedBox(height: 12),
-              MiuixText(_dlLabel, fontSize: 12, color: c.onSurfaceVariantSummary),
+              ModelDownloadProgress(
+                  received: _received, total: _total, label: '下载安装包'),
               const SizedBox(height: 8),
               Row(
                 children: <Widget>[
@@ -281,8 +268,7 @@ class _UpdateDialogState extends State<_UpdateDialog> {
               ),
             ] else ...<Widget>[
               if (_failed) ...<Widget>[
-                MiuixText('下载失败，请检查网络后重试',
-                    fontSize: 13, color: c.error),
+                MiuixText('下载失败，请检查网络后重试', fontSize: 13, color: c.error),
                 const SizedBox(height: 12),
               ],
               Row(

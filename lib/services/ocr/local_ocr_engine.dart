@@ -81,7 +81,12 @@ class LocalOcrEngine implements OcrEngine {
     final crops = await compute(
         _locateCrops, _CropRequest(await image.readAsBytes(), expected));
     if (crops == null || crops.isEmpty) {
-      throw const FormatException('未能定位到与房间数一致的电表示数窗，请重新拍照');
+      // Digital/LCD meters and bright cabinets need not have white windows.
+      // Try the original image as a list; strict count validation remains upstream.
+      return recognize(image,
+          prompt: '按每行从左到右、逐行从上到下读取照片里的电表。'
+              '只读整数示数，不读表号、红色小数。只输出 JSON 数组，恰好 $expected 项；'
+              '看不清或无法确定的位置用 null 占位，不要解释。');
     }
     final temp = await Directory.systemTemp.createTemp('ocr-windows-');
     try {

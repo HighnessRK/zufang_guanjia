@@ -3,6 +3,7 @@ package com.zufang.guanjia
 import android.Manifest
 import android.app.Activity
 import android.content.ContentValues
+import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.net.Uri
@@ -18,6 +19,7 @@ import androidx.core.content.FileProvider
 import com.zufang.guanjia.notify.FocusNotificationHelper
 import com.zufang.guanjia.notify.NotificationHelper
 import io.flutter.embedding.android.FlutterActivity
+import io.flutter.embedding.engine.FlutterEngineCache
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.MethodChannel
 import java.io.File
@@ -47,6 +49,11 @@ import java.util.zip.ZipOutputStream
  *   saveImageToGallery   保存 PNG 到系统相册（Pictures/租房管家）
  */
 class MainActivity : FlutterActivity() {
+    // A user-started OCR service can outlive the visible activity.
+    override fun provideFlutterEngine(context: Context): FlutterEngine? =
+        FlutterEngineCache.getInstance().get("rental-main")
+    override fun shouldDestroyEngineWithHost(): Boolean = false
+
 
     companion object {
         private const val CHANNEL_NAME = "com.zufang.guanjia/native"
@@ -70,6 +77,7 @@ class MainActivity : FlutterActivity() {
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
+        FlutterEngineCache.getInstance().put("rental-main", flutterEngine)
 
         // 通知渠道初始化
         NotificationHelper.ensureChannels(this)
@@ -81,6 +89,14 @@ class MainActivity : FlutterActivity() {
 
         methodChannel?.setMethodCallHandler { call, result ->
             when (call.method) {
+                "recognitionActive" -> {
+                    val intent = Intent(this, RecognitionService::class.java)
+                    if (call.argument<Boolean>("active") == true) {
+                        ContextCompat.startForegroundService(this, intent)
+                    } else stopService(intent)
+                    result.success(null)
+                }
+
                 "configureUpdateSchedule" -> {
                     UpdateScheduler.configure(this,
                         call.argument<Boolean>("enabled") ?: true,

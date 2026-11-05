@@ -359,8 +359,17 @@ void main() {
       await File('${dir.path}/${a.name}').writeAsBytes([1, 2, 3]);
     }
     final models = ModelManager(directory: dir, assets: assets);
-    await models.init();
+    final states = <ModelStatus>[];
+    models.addListener(() => states.add(models.status));
+    final initializing = models.init();
+    expect(models.status, ModelStatus.verifying);
+    await initializing;
     expect(models.ready, true);
+    expect(models.initialized, isTrue);
+    expect(states, isNot(contains(ModelStatus.missing)));
+    final restarted = ModelManager(directory: dir, assets: assets);
+    await restarted.init();
+    expect(restarted.ready, isTrue);
     await models.cancel();
     expect(models.ready, true);
     await models.delete();

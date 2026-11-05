@@ -72,7 +72,7 @@ class _OcrSettingsPanelState extends State<OcrSettingsPanel> {
       ModelStatus.missing => '未下载',
       ModelStatus.downloading => '下载中',
       ModelStatus.paused => '已暂停 · 可继续下载',
-      ModelStatus.verifying => '校验中',
+      ModelStatus.verifying => '正在检查本地模型…',
       ModelStatus.ready => '已就绪',
       ModelStatus.corrupt => '下载失败 · 请重试',
     };
@@ -123,7 +123,7 @@ class _OcrSettingsPanelState extends State<OcrSettingsPanel> {
                   detail: models.currentFile),
               const SizedBox(height: 14),
             ],
-            if (!models.ready)
+            if (!models.ready && models.initialized)
               GradientButton(
                   label: models.busy
                       ? '暂停下载'

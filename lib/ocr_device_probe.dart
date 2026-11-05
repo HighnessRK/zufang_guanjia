@@ -4,6 +4,7 @@ import 'dart:io';
 import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:llama_cpp_dart/llama_cpp_dart.dart';
 import 'package:image/image.dart' as img;
@@ -31,6 +32,8 @@ class _ProbeState extends State<_Probe> {
       busy = true;
       status = '正在校验并加载模型…';
     });
+    const channel = MethodChannel('com.zufang.guanjia/native');
+    await channel.invokeMethod<void>('recognitionActive', {'active': true});
     final engine = LocalOcrEngine(ModelManager.instance);
     try {
       LlamaLibrary.load(path: LlamaLibrary.defaultFileName());
@@ -110,6 +113,7 @@ class _ProbeState extends State<_Probe> {
       debugPrint('OCR_PROBE $e\n$st');
     } finally {
       await engine.dispose();
+      await channel.invokeMethod<void>('recognitionActive', {'active': false});
       if (mounted) setState(() => busy = false);
     }
   }
