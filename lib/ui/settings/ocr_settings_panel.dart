@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_miuix/miuix.dart';
 import '../../core/config/app_config.dart';
 import '../../services/ocr/model_manager.dart';
+import '../../services/ocr/model_catalog.dart';
+import '../widgets/model_download_progress.dart';
 import '../../services/ocr/ocr_engine_resolver.dart';
 import '../../services/ocr/soc_info.dart';
 import '../widgets/app_widgets.dart';
@@ -111,18 +113,15 @@ class _OcrSettingsPanelState extends State<OcrSettingsPanel> {
               StatusTag(models.ready ? '已下载' : '约 1.04 GB', color: c.primary),
             ]),
             const SizedBox(height: 14),
-            if (models.busy) ...[
-              LinearProgressIndicator(
-                  value: models.total > 0
-                      ? (models.received / models.total).clamp(0.0, 1.0)
-                      : null),
-              const SizedBox(height: 8),
-              MiuixText(
-                  '${(models.received / 1048576).toStringAsFixed(1)} MB / '
-                  '${models.total > 0 ? '${(models.total / 1048576).toStringAsFixed(1)} MB' : '大小待获取'} · 当前文件',
-                  fontSize: 12,
-                  color: c.onSurfaceVariantSummary),
-              const SizedBox(height: 12),
+            if (models.busy ||
+                models.status == ModelStatus.paused ||
+                models.received > 0 && !models.ready) ...[
+              ModelDownloadProgress(
+                  received: models.received,
+                  total: models.total,
+                  verifying: models.status == ModelStatus.verifying,
+                  detail: models.currentFile),
+              const SizedBox(height: 14),
             ],
             if (!models.ready)
               GradientButton(
@@ -156,7 +155,7 @@ class _OcrSettingsPanelState extends State<OcrSettingsPanel> {
                   }),
             if (!models.ready) ...[
               const SizedBox(height: 10),
-              MiuixText('请预留 2 GB 空间；本地识别较慢，请核对读数。',
+              MiuixText('Gitee 国内镜像 · 请预留 2 GB 空间',
                   fontSize: 12, color: c.onSurfaceVariantSummary)
             ],
             for (final message in [
@@ -188,6 +187,7 @@ class _OcrSettingsPanelState extends State<OcrSettingsPanel> {
                         InfoRow('实际引擎', resolver.actualEngine),
                         InfoRow('设备芯片', soc.description),
                         const InfoRow('运行方式', 'CPU · 暂不支持 NPU 加速'),
+                        const InfoRow('下载来源', ModelCatalog.sourceLabel),
                         const SizedBox(height: 8),
                         MiuixText(
                             '来源：xzl01/Xiaomi-OCR-0-GGUF v1.0.0（社区转换版）。包含 Q8_0 主模型和 F16 投影器，下载后自动校验。准确度请以人工核对为准。',

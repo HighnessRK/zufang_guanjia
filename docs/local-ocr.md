@@ -10,18 +10,29 @@ libmtmd, libggml and the CPU backend.
 Both the Q8_0 model and F16 projector are required. Files live in application
 support `models/xiaomi-ocr-0/`; never in rental.db or the Feishu snapshot.
 
-Default source: https://github.com/xzl01/Xiaomi-OCR-0-GGUF/releases/tag/v1.0.0
-(community conversion, not a Xiaomi-operated download service). The main Q8_0
-file is assembled from 20 publisher release parts; the F16 projector is required.
-Official GitHub asset API redirects are used without third-party proxies.
+Default source (v1.2.4):
+https://gitee.com/highnesssrk/xiaomi-ocr-0-gguf/releases/tag/v1.0.0 .
+This is our byte-identical domestic mirror of
+https://github.com/xzl01/Xiaomi-OCR-0-GGUF/releases/tag/v1.0.0
+(community conversion, not a Xiaomi-operated download service).
+Q8_0 uses the same 20 transport segments; the F16 projector is split into 5
+segments to meet Gitee's per-attachment limit. Model bytes and filenames are
+unchanged. Both upstream Apache-2.0 licenses and a per-segment SHA-256 manifest
+are included in the mirror release. All 25 segments were anonymously downloaded
+and their size and SHA-256 compared with the original verified files.
+The 1,040,937,440-byte download is shown as 1.04 GB (decimal units), including
+both files. Overall progress includes saved segments and completed models.
+An old single-file projector partial is migrated into the new segment layout.
+Gitee may ignore HTTP Range; in that case the current segment is streamed from
+the beginning and the saved prefix discarded from the response, preserving the
+local prefix and displayed progress. Completed segments are never redownloaded.
 Full SHA-256 values from upstream `scripts/fetch-model.sh`:
 
 - Main: `1b3c4e37129cb29896c61c833589be2acfb9eb0370bb84d3df12759f1f0f457a`
 - Projector: `037e6a655ff168a5decb51c16dc819c06b7e19684441e98f00cb732c2ac61084`
 
 Both assembled files are hashed before use and again at app startup. Reserve
-at least 2 GB for downloads and temporary assembly. No verified domestic GGUF
-mirror is available. Build-time overrides remain supported with
+at least 2 GB for downloads and temporary assembly. Build-time overrides remain supported with
 `--dart-define=OCR_MODEL_URL=...`, `OCR_MODEL_SHA256`, `OCR_PROJECTOR_URL`,
 `OCR_PROJECTOR_SHA256`; replacement files must have audited matching hashes.
 No API keys belong in these settings.
@@ -69,7 +80,7 @@ Review the upstream model card and license before redistributing a mirror.
   retries) is covered by automated tests. A full live download from the public
   upstream into the production package is not claimed as a separate acceptance
   pass; the installed probe uses the same verified files and hashes.
-- Production version is 1.2.2+17.
+- Production version is 1.2.4+19.
 
 ## Hexagon build limitation
 

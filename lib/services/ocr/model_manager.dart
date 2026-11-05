@@ -26,7 +26,79 @@ class ModelManager extends ChangeNotifier {
   HttpClient? _client;
   bool _stop = false;
   ModelStatus status = ModelStatus.missing;
+  // Whole download: includes every model/projector segment, including resumed bytes.
   int received = 0, total = 0;
+  final Map<String, int> _downloaded = {};
+  final Map<String, int> _expected = {};
+  String currentFile = '';
+  final Stopwatch _updates = Stopwatch()..start();
+  int _lastUpdate = 0;
+  void _notifyProgress() {
+    if (_updates.elapsedMilliseconds - _lastUpdate < 120) return;
+    _lastUpdate = _updates.elapsedMilliseconds;
+    notifyListeners();
+  }
+
+  String _key(ModelAsset a, int index) => '${a.name}/$index';
+
+  void _progress(ModelAsset a, int index, int bytes, {int? size}) {
+    final key = _key(a, index);
+    _downloaded[key] = bytes;
+    if (size != null && size > 0) _expected[key] = size;
+    received = _downloaded.values.fold(0, (sum, n) => sum + n);
+    final count = assets.fold(0, (sum, a) => sum + a.sources.length);
+    total = _expected.length == count
+        ? _expected.values.fold(0, (sum, n) => sum + n)
+        : 0;
+  }
+
+  /// v1.2.3 downloaded the projector as one file. Split an existing partial
+  /// into the new mirror segments without losing downloaded bytes. A partial
+  /// assembly is also a prefix of the same immutable file and is safe to split.
+  Future<void> _migratePartial(ModelAsset a) async {
+    if (a.parts == 0 || !await partial(a).exists() || a.byteSize == null) {
+      return;
+    }
+    final old = partial(a);
+    final length = await old.length();
+    for (var i = 0, offset = 0; i < a.parts && offset < length; i++) {
+      final size = a.sourceSize(i)!;
+      final end = (offset + size).clamp(0, length);
+      final segment = File('${root.path}/${a.name}.segment-$i');
+      if (!await segment.exists() || await segment.length() < end - offset) {
+        final sink = segment.openWrite();
+        try {
+          await sink.addStream(old.openRead(offset, end));
+        } finally {
+          await sink.close();
+        }
+      }
+      offset += size;
+    }
+    await old.delete();
+  }
+
+  Future<void> _readProgress() async {
+    _downloaded.clear();
+    _expected.clear();
+    received = total = 0;
+    for (final a in assets) {
+      final complete = await file(a).exists();
+      for (var i = 0; i < a.sources.length; i++) {
+        final size = a.sourceSize(i);
+        final f = a.parts == 0
+            ? partial(a)
+            : File('${root.path}/${a.name}.segment-$i');
+        final bytes = complete
+            ? (size ?? await file(a).length())
+            : await f.exists()
+                ? await f.length()
+                : 0;
+        _progress(a, i, bytes, size: size ?? (complete ? bytes : null));
+      }
+    }
+  }
+
   String error = '';
   bool get configured => assets.every((a) => a.configured);
   bool get ready => status == ModelStatus.ready;
@@ -43,6 +115,7 @@ class ModelManager extends ChangeNotifier {
     if (!configured) return;
     bool all = true, any = false;
     for (final a in assets) {
+      await _migratePartial(a);
       if (await file(a).exists()) {
         if (!await _valid(file(a), a)) {
           await file(a).delete();
@@ -63,6 +136,7 @@ class ModelManager extends ChangeNotifier {
     } else if (status != ModelStatus.corrupt && any) {
       status = ModelStatus.paused;
     }
+    await _readProgress();
     notifyListeners();
   }
 
@@ -98,6 +172,7 @@ class ModelManager extends ChangeNotifier {
 
   Future<void> _download() async {
     error = '';
+    await _readProgress();
     _client = (clientFactory?.call() ?? HttpClient())
       ..connectionTimeout = const Duration(seconds: 30);
     try {
@@ -110,11 +185,14 @@ class ModelManager extends ChangeNotifier {
               ? partial(a)
               : File('${root.path}/${a.name}.segment-$index');
           var offset = await part.exists() ? await part.length() : 0;
+          currentFile = '${a.name.startsWith('mmproj') ? '视觉投影器' : '主模型'}'
+              '${a.parts == 0 ? '' : ' · 分片 ${index + 1}/${a.parts}'}';
           final expectedSize = a.sourceSize(index);
           if (expectedSize != null && offset == expectedSize) continue;
           if (expectedSize != null && offset > expectedSize) {
             await part.delete();
             offset = 0;
+            _progress(a, index, 0);
           }
           if (expectedSize != null) {
             await _downloadRanges(a, index, part, expectedSize);
@@ -146,9 +224,10 @@ class ModelManager extends ChangeNotifier {
             throw const HttpException('服务器断点范围不匹配');
           }
           if (response.statusCode == 200) offset = 0;
-          received = offset;
-          total =
+          var partReceived = offset;
+          final partTotal =
               response.contentLength < 0 ? 0 : offset + response.contentLength;
+          _progress(a, index, partReceived, size: partTotal);
           status = ModelStatus.downloading;
           await _persist();
           final sink = part.openWrite(
@@ -158,8 +237,9 @@ class ModelManager extends ChangeNotifier {
                 in response.timeout(const Duration(seconds: 60))) {
               if (_stop) break;
               sink.add(chunk);
-              received += chunk.length;
-              notifyListeners();
+              partReceived += chunk.length;
+              _progress(a, index, partReceived);
+              _notifyProgress();
             }
           } finally {
             await sink.flush();
@@ -167,7 +247,7 @@ class ModelManager extends ChangeNotifier {
           }
           if (_stop) break;
           if ((expectedSize != null && await part.length() != expectedSize) ||
-              (total > 0 && received != total)) {
+              (partTotal > 0 && partReceived != partTotal)) {
             throw const HttpException('下载不完整，请恢复下载');
           }
         }
@@ -191,6 +271,9 @@ class ModelManager extends ChangeNotifier {
           for (var i = 0; i < a.parts; i++) {
             final segment = File('${root.path}/${a.name}.segment-$i');
             if (await segment.exists()) await segment.delete();
+          }
+          for (var i = 0; i < a.sources.length; i++) {
+            _progress(a, i, 0);
           }
           throw const FormatException('SHA-256 校验失败，已删除损坏文件');
         }
@@ -225,7 +308,7 @@ class ModelManager extends ChangeNotifier {
       ModelAsset asset, int index, File part, int size) async {
     var failures = 0;
     while (!_stop) {
-      var offset = await part.exists() ? await part.length() : 0;
+      final offset = await part.exists() ? await part.length() : 0;
       if (offset == size) return;
       final end = (offset + 1024 * 1024).clamp(0, size) - 1;
       try {
@@ -248,33 +331,44 @@ class ModelManager extends ChangeNotifier {
                 'bytes $offset-$end/$size') {
           throw const HttpException('服务器断点范围不匹配');
         }
-        // Servers ignoring Range may send the whole asset. Never append that
-        // response to a partial file or mistake a JSON API response for GGUF.
-        if (response.statusCode == 200) offset = 0;
+        // Gitee may ignore Range. Keep the saved prefix and discard those bytes
+        // from a full response, so resuming never duplicates bytes or resets
+        // the displayed overall progress. Final full-file SHA stays mandatory.
+        var discard = response.statusCode == 200 ? offset : 0;
         final limit = response.statusCode == 200 ? size : end + 1;
-        received = offset;
-        total = size;
+        var partReceived = offset;
+        _progress(asset, index, partReceived, size: size);
         status = ModelStatus.downloading;
         await _persist();
         final sink = part.openWrite(
             mode: offset == 0 ? FileMode.write : FileMode.append);
         try {
-          await for (final chunk
+          await for (final incoming
               in response.timeout(const Duration(seconds: 30))) {
             if (_stop) break;
-            if (received + chunk.length > limit) {
+            var chunk = incoming;
+            if (discard >= chunk.length) {
+              discard -= chunk.length;
+              continue;
+            }
+            if (discard > 0) {
+              chunk = chunk.sublist(discard);
+              discard = 0;
+            }
+            if (partReceived + chunk.length > limit) {
               throw const HttpException('下载响应超出请求范围');
             }
             sink.add(chunk);
-            received += chunk.length;
-            notifyListeners();
+            partReceived += chunk.length;
+            _progress(asset, index, partReceived);
+            _notifyProgress();
           }
         } finally {
           await sink.flush();
           await sink.close();
         }
         if (_stop) return;
-        if (received != limit) throw const HttpException('下载响应不完整');
+        if (partReceived != limit) throw const HttpException('下载响应不完整');
         failures = 0;
       } catch (_) {
         if (_stop) return;
@@ -308,7 +402,7 @@ class ModelManager extends ChangeNotifier {
                 .then((values) => values.every((v) => v))
         ? ModelStatus.ready
         : ModelStatus.missing;
-    received = total = 0;
+    await _readProgress();
     await _persist();
   }
 
@@ -320,6 +414,7 @@ class ModelManager extends ChangeNotifier {
         }
         error = '';
         status = ModelStatus.missing;
+        await _readProgress();
         await _persist();
       });
 }

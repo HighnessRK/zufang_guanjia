@@ -31,6 +31,12 @@ class AppChangelog {
 
   /// 全部版本（倒序：最新在最前）
   static const List<ChangelogVersion> versions = <ChangelogVersion>[
+    ChangelogVersion('1.2.4', '2026-11-05', <ChangelogEntry>[
+      ChangelogEntry('优化', 'Xiaomi-OCR-0 改用 Gitee 国内镜像，保留原模型与完整校验'),
+      ChangelogEntry('修复', '下载进度按主模型和投影器总量累计，完整显示约 1.04 GB，不再只显示 40 MB 分片'),
+      ChangelogEntry('优化', '下载进度采用圆角渐变条，显示百分比、累计大小和当前分片'),
+      ChangelogEntry('修复', '暂停与重启保留整体进度，兼容旧版下载断点和已下载模型'),
+    ]),
     ChangelogVersion('1.2.3', '2026-11-04', <ChangelogEntry>[
       ChangelogEntry('修复', '补齐关于页历史更新日志，与更新弹窗展示的发布内容一致'),
       ChangelogEntry('优化', '大模型识别统一设置卡片与按钮样式，精简文案，模型和设备说明按需展开'),
