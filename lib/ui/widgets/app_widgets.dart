@@ -8,6 +8,8 @@ import 'package:flutter_miuix/miuix.dart';
 import '../../core/config/app_config.dart';
 import '../../core/utils/date_util.dart';
 import 'app_editable_field.dart';
+import 'app_palette.dart';
+export 'app_palette.dart';
 
 /// 全局可复用的 UI 小组件与工具：分组标题、信息行、统计卡片、
 /// 空状态、HyperOS 风格确认弹窗、全局 Snackbar。
@@ -342,6 +344,7 @@ class EmptyView extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final MiuixColors c = MiuixTheme.of(context).colors;
+    final palette = AppPalette.of(context);
     return Center(
       child: Column(
         mainAxisSize: MainAxisSize.min,
@@ -355,20 +358,20 @@ class EmptyView extends StatelessWidget {
                 begin: Alignment.topLeft,
                 end: Alignment.bottomRight,
                 colors: <Color>[
-                  const Color(0xFF3482FF).withValues(alpha: 0.16),
-                  const Color(0xFF7B5CFF).withValues(alpha: 0.10),
+                  palette.actions.first.withValues(alpha: 0.16),
+                  palette.actions[1].withValues(alpha: 0.10),
                 ],
               ),
               border: Border.all(color: Colors.white.withValues(alpha: 0.75)),
               boxShadow: <BoxShadow>[
                 BoxShadow(
-                  color: const Color(0xFF3482FF).withValues(alpha: 0.16),
+                  color: palette.actions.first.withValues(alpha: 0.16),
                   blurRadius: 24,
                   offset: const Offset(0, 8),
                 ),
               ],
             ),
-            child: Icon(icon, size: 34, color: const Color(0xFF5B7CFF)),
+            child: Icon(icon, size: 34, color: palette.accent(context)),
           ),
           const SizedBox(height: 16),
           MiuixText(
@@ -440,24 +443,9 @@ class AuroraBackground extends StatelessWidget {
     final bool dark = Theme.of(context).brightness == Brightness.dark;
     final cfg = AppConfig.instance;
     if (cfg.backgroundStyle == 'none') return const SizedBox.shrink();
-    final palette = switch (cfg.backgroundStyle) {
-      'ocean' => [
-          const Color(0xFF36C5F0),
-          const Color(0xFF235CCC),
-          const Color(0xFF6BE6DB)
-        ],
-      'sunset' => [
-          const Color(0xFFFFAE6B),
-          const Color(0xFFCC60A5),
-          const Color(0xFFFF8C99)
-        ],
-      'jade' => [
-          const Color(0xFF4EC7A3),
-          const Color(0xFF468A9B),
-          const Color(0xFFB9E3A8)
-        ],
-      _ => [blue, purple, pink],
-    };
+    final palette = cfg.backgroundStyle == 'aurora'
+        ? [blue, purple, pink]
+        : AppPalette.of(context).ambient;
     final double a = dark ? 0.26 : 0.40;
     return IgnorePointer(
       child: Stack(
@@ -912,11 +900,7 @@ class GradientIconBox extends StatelessWidget {
   }
 }
 
-/// 蓝 → 紫 → 粉 渐变主按钮（液态玻璃风格 CTA）
-///
-/// 【圆角矩形 + 玻璃质感】圆角 16（非胶囊）；渐变色保留原蓝→紫→粉，但
-/// 以半透明形式呈现并叠加毛玻璃背景、亮边描边与顶部高光——与整页液态
-/// 玻璃语言统一，按钮"浮"在极光之上而不是实色贴片。
+/// 主操作按钮与当前背景共享色系；白色文字保持足够对比度。
 class GradientButton extends StatelessWidget {
   const GradientButton({
     super.key,
@@ -935,21 +919,9 @@ class GradientButton extends StatelessWidget {
   /// 紧凑档：卡片头部等小空间的行动点（高度 34，字号 13）
   final bool compact;
 
-  /// 主渐变三色（同时用于底色与光晕）
-  static const List<Color> kColors = <Color>[
-    Color(0xFF3482FF),
-    Color(0xFF7B5CFF),
-    Color(0xFFFF6B9D),
-  ];
-
-  static const LinearGradient kGradient = LinearGradient(
-    begin: Alignment.centerLeft,
-    end: Alignment.centerRight,
-    colors: kColors,
-  );
-
   @override
   Widget build(BuildContext context) {
+    final palette = AppPalette.of(context);
     final bool active = enabled && onPressed != null;
     final BorderRadius r = BorderRadius.circular(compact ? 12 : 16);
     return GestureDetector(
@@ -960,65 +932,58 @@ class GradientButton extends StatelessWidget {
         opacity: active ? 1 : 0.45,
         child: ClipRRect(
           borderRadius: r,
-          // 毛玻璃底：身后极光 / 卡片透上来，按钮呈"玻璃片"
-          child: BackdropFilter(
-            filter: ImageFilter.blur(sigmaX: 18, sigmaY: 18),
-            child: Container(
-              constraints: BoxConstraints(minHeight: compact ? 34 : 52),
-              padding: EdgeInsets.symmetric(
-                  horizontal: compact ? 14 : 16, vertical: compact ? 6 : 12),
-              alignment: Alignment.center,
-              decoration: BoxDecoration(
-                // 半透明渐变主色（保留原色彩识别度）
-                gradient: LinearGradient(
-                  begin: Alignment.centerLeft,
-                  end: Alignment.centerRight,
-                  colors: kColors
-                      .map((Color c) => c.withValues(alpha: 0.82))
-                      .toList(),
-                ),
-                borderRadius: r,
-                // 亮边描边：玻璃质感的关键
-                border: Border.all(
-                  color: Colors.white.withValues(alpha: 0.32),
-                ),
-                boxShadow: active
-                    ? <BoxShadow>[
-                        BoxShadow(
-                          color:
-                              const Color(0xFF7B5CFF).withValues(alpha: 0.32),
-                          blurRadius: compact ? 10 : 18,
-                          offset: const Offset(0, 6),
-                        ),
-                      ]
-                    : null,
+          child: Container(
+            constraints: BoxConstraints(minHeight: compact ? 34 : 52),
+            padding: EdgeInsets.symmetric(
+                horizontal: compact ? 14 : 16, vertical: compact ? 6 : 12),
+            alignment: Alignment.center,
+            decoration: BoxDecoration(
+              // 与光效同色系的高对比渐变
+              gradient: LinearGradient(
+                begin: Alignment.centerLeft,
+                end: Alignment.centerRight,
+                colors: palette.actions,
               ),
-              // 顶部高光：玻璃上沿的一道反光
-              foregroundDecoration: BoxDecoration(
-                borderRadius: r,
-                border: Border(
-                  top: BorderSide(
-                    color: Colors.white.withValues(alpha: 0.45),
-                  ),
+              borderRadius: r,
+              // 亮边描边：玻璃质感的关键
+              border: Border.all(
+                color: Colors.white.withValues(alpha: 0.32),
+              ),
+              boxShadow: active
+                  ? <BoxShadow>[
+                      BoxShadow(
+                        color: palette.actions[1].withValues(alpha: 0.24),
+                        blurRadius: compact ? 10 : 18,
+                        offset: const Offset(0, 6),
+                      ),
+                    ]
+                  : null,
+            ),
+            // 顶部高光：玻璃上沿的一道反光
+            foregroundDecoration: BoxDecoration(
+              borderRadius: r,
+              border: Border(
+                top: BorderSide(
+                  color: Colors.white.withValues(alpha: 0.45),
                 ),
               ),
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: <Widget>[
-                  if (icon != null) ...<Widget>[
-                    Icon(icon, size: compact ? 16 : 20, color: Colors.white),
-                    const SizedBox(width: 6),
-                  ],
-                  Flexible(
-                      child: MiuixText(
-                    label,
-                    fontSize: compact ? 13 : 16,
-                    fontWeight: FontWeight.w700,
-                    color: Colors.white,
-                    textAlign: TextAlign.center,
-                  )),
+            ),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: <Widget>[
+                if (icon != null) ...<Widget>[
+                  Icon(icon, size: compact ? 16 : 20, color: Colors.white),
+                  const SizedBox(width: 6),
                 ],
-              ),
+                Flexible(
+                    child: MiuixText(
+                  label,
+                  fontSize: compact ? 13 : 16,
+                  fontWeight: FontWeight.w700,
+                  color: Colors.white,
+                  textAlign: TextAlign.center,
+                )),
+              ],
             ),
           ),
         ),
@@ -1075,19 +1040,10 @@ class AppModalPanel extends StatelessWidget {
                         mq.padding.vertical -
                         56)
                     .clamp(160.0, 720.0)),
-            child: Container(
+            child: GlassCard(
+                borderRadius: 28,
+                blurSigma: 30,
                 padding: const EdgeInsets.all(22),
-                decoration: BoxDecoration(
-                    color: c.surface,
-                    borderRadius: BorderRadius.circular(28),
-                    border:
-                        Border.all(color: c.onSurface.withValues(alpha: .10)),
-                    boxShadow: [
-                      BoxShadow(
-                          color: Colors.black.withValues(alpha: .12),
-                          blurRadius: 32,
-                          offset: const Offset(0, 12))
-                    ]),
                 child: Column(
                     mainAxisSize: MainAxisSize.min,
                     crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -1095,7 +1051,9 @@ class AppModalPanel extends StatelessWidget {
                       Row(children: [
                         Expanded(
                             child: MiuixText(title,
-                                fontSize: 20, fontWeight: FontWeight.w700)),
+                                color: c.onSurface,
+                                fontSize: 20,
+                                fontWeight: FontWeight.w700)),
                         IconButton(
                             tooltip: '关闭',
                             onPressed: () => Navigator.of(context).pop(),
@@ -1103,14 +1061,15 @@ class AppModalPanel extends StatelessWidget {
                                 backgroundColor:
                                     c.onSurface.withValues(alpha: .05)),
                             icon: Icon(Icons.close_rounded,
-                                size: 19, color: c.onSurfaceVariantSummary))
+                                size: 19,
+                                color: c.onSurface.withValues(alpha: .78)))
                       ]),
                       if (summary?.isNotEmpty == true) ...[
                         const SizedBox(height: 6),
                         MiuixText(summary!,
                             fontSize: 12,
                             height: 1.5,
-                            color: c.onSurfaceVariantSummary)
+                            color: c.onSurface.withValues(alpha: .78))
                       ],
                       if (content != null) ...[
                         const SizedBox(height: 18),

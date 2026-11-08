@@ -222,9 +222,9 @@ class _HomePageState extends State<HomePage> {
         children: <Widget>[
           Row(
             children: <Widget>[
-              const GradientIconBox(
+              GradientIconBox(
                 icon: Icons.account_balance_wallet_rounded,
-                colors: <Color>[Color(0xFF3482FF), Color(0xFF7B5CFF)],
+                colors: AppPalette.of(context).actions,
               ),
               const SizedBox(width: 12),
               Expanded(
@@ -250,11 +250,13 @@ class _HomePageState extends State<HomePage> {
                 padding:
                     const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
                 decoration: BoxDecoration(
-                  gradient: GradientButton.kGradient,
+                  gradient: AppPalette.of(context).gradient,
                   borderRadius: BorderRadius.circular(999),
                   boxShadow: <BoxShadow>[
                     BoxShadow(
-                      color: const Color(0xFF7B5CFF).withValues(alpha: 0.35),
+                      color: AppPalette.of(context)
+                          .actions[1]
+                          .withValues(alpha: 0.25),
                       blurRadius: 12,
                       offset: const Offset(0, 4),
                     ),
@@ -308,12 +310,14 @@ class _HomePageState extends State<HomePage> {
                   widthFactor: pct / 100,
                   child: Container(
                     decoration: BoxDecoration(
-                      gradient: GradientButton.kGradient,
+                      gradient: AppPalette.of(context).gradient,
                       borderRadius: BorderRadius.circular(6),
                       boxShadow: <BoxShadow>[
                         BoxShadow(
-                          color:
-                              const Color(0xFF3482FF).withValues(alpha: 0.45),
+                          color: AppPalette.of(context)
+                              .actions
+                              .first
+                              .withValues(alpha: 0.30),
                           blurRadius: 8,
                         ),
                       ],
@@ -371,7 +375,7 @@ class _HomePageState extends State<HomePage> {
             ]),
           ));
       return Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        tile('${s.totalRooms}', '房间总数', const Color(0xFF3482FF)),
+        tile('${s.totalRooms}', '房间总数', AppPalette.of(context).accent(context)),
         const SizedBox(width: 12),
         tile('${s.occupiedRooms}', '在租 · 空置 ${s.emptyRooms}',
             const Color(0xFF34C759)),
@@ -386,9 +390,9 @@ class _HomePageState extends State<HomePage> {
             onPressed: _openRooms,
             child: Row(
               children: <Widget>[
-                const GradientIconBox(
+                GradientIconBox(
                   icon: Icons.meeting_room_rounded,
-                  colors: <Color>[Color(0xFF3482FF), Color(0xFF5AC8FA)],
+                  colors: AppPalette.of(context).actions,
                   size: 38,
                   radius: 12,
                 ),
@@ -580,9 +584,9 @@ class _HomePageState extends State<HomePage> {
         children: <Widget>[
           Row(
             children: <Widget>[
-              const GradientIconBox(
+              GradientIconBox(
                 icon: Icons.donut_small_rounded,
-                colors: <Color>[Color(0xFFFF6B9D), Color(0xFFAF52DE)],
+                colors: AppPalette.of(context).actions,
                 size: 34,
                 radius: 11,
               ),

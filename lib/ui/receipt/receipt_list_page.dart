@@ -261,9 +261,9 @@ class _ReceiptListPageState extends State<ReceiptListPage> {
       onPressed: () => _open(r),
       child: Row(
         children: <Widget>[
-          const GradientIconBox(
+          GradientIconBox(
             icon: Icons.receipt_long_rounded,
-            colors: <Color>[Color(0xFF3482FF), Color(0xFF7B5CFF)],
+            colors: AppPalette.of(context).actions,
             size: 40,
             radius: 12,
           ),

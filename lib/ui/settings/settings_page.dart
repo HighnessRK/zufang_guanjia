@@ -105,6 +105,7 @@ class _SettingsPageState extends State<SettingsPage> {
                       summary: '统计 · 备份 · 恢复',
                       onClick: () => _push(const DataSettingsPage()),
                     ),
+                    const MiuixHorizontalDivider(),
                     MiuixArrowPreference(
                       title: '飞书多维表格',
                       summary: '云端数据 · 本地缓存 · 同步状态',

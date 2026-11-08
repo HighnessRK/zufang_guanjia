@@ -1,3 +1,9 @@
+## App vendor changes — V1.2.9
+
+* Fixed slab bevel with inward curved refraction, continuous softened backdrop and no whole-pane image compression.
+* Independent convex selection lens, drag enlargement, smooth settling and pointer-cancel protection. Analytic filter uniforms avoid LiquidGlass geometry readback.
+* Foreground controls remain outside optical filters; both lens silhouettes clip their own contents.
+
 ## 0.0.14
 
 * Change: `LiquidGlassNavBar`'s held-tab feedback replaced. The old drag tilt (`rotateZ` + direction-dependent squash/stretch driven by horizontal drag delta) is gone. In its place: a direction-independent vertical spring squash that responds continuously to drag movement and settles back to neutral with a subtle overshoot (`Curves.easeOutBack`) once the finger pauses.

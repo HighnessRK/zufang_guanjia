@@ -1,4 +1,3 @@
-import 'dart:async';
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
@@ -129,9 +128,8 @@ Widget _iconWithBadge(
 
 /// Floating pill bottom navigation bar with a sliding glass bubble indicator.
 ///
-/// On Impeller-capable devices the active indicator is an [AnimatedPositioned]
-/// bubble that bounces between tabs on tap and follows a drag when the user
-/// long-presses and slides. Falls back to [_LegacyNavBar] on devices without
+/// On Impeller-capable devices the active indicator is a tweened analytic
+/// lens that glides between tabs and follows horizontal dragging. Falls back to [_LegacyNavBar] on devices without
 /// Impeller/Vulkan support (Android API < 24) or if [impellerSupported] is false.
 class LiquidGlassNavBar extends StatefulWidget {
   final List<LiquidGlassNavItem> items;
@@ -180,23 +178,12 @@ class LiquidGlassNavBar extends StatefulWidget {
   /// so this has no effect there.
   final double borderRadius;
 
-  /// When true, the held bubble's border is a soft iridescent sheen instead
-  /// of the default light gray stroke. Defaults to `false`.
+  /// Retained for source compatibility. Analytic lenses now use a continuous
+  /// optical highlight; no separate colored drag stroke is drawn.
   final bool dragRainbowBorder;
 
-  /// When true, the bubble renders as a real [LiquidGlass] shape (its own
-  /// GPU layer, actual frosted refraction) instead of a plain tinted
-  /// [BoxDecoration] — but only while actively held/dragging. The resting
-  /// (selected-but-not-dragging) bubble always stays the plain tinted
-  /// container regardless of this flag. Defaults to `true`.
-  ///
-  /// While held, this bubble's position and size animate every drag frame
-  /// — enabling this means the glass shader recomputes (`toImageSync()`)
-  /// every one of those frames, which is exactly the per-frame shader cost
-  /// this package otherwise avoids by keeping all glass shapes static (see
-  /// the package-level renderer performance notes). If you see jank while
-  /// holding a tab on low-end Android hardware, set this to `false` to fall
-  /// back to the plain tinted container.
+  /// Retained for source compatibility. Selection now always uses a lightweight
+  /// analytic glass filter, with no animated LiquidGlass geometry readback.
   final bool liquidActiveBubble;
   final bool clearGlass;
   final bool reduceMotion;
@@ -230,106 +217,22 @@ class LiquidGlassNavBar extends StatefulWidget {
   State<LiquidGlassNavBar> createState() => _LiquidGlassNavBarState();
 }
 
-/// Soft iridescent "soap bubble" sheen drawn around the held bubble during
-/// drag, in place of a tinted [activeColor] stroke: a blurred pastel sweep
-/// gradient rim plus a glossy specular highlight near the top-left. No
-/// animation — painted once per rebuild, so it adds no per-frame cost beyond
-/// the drag rebuilds that already happen.
-class _RainbowRingPainter extends CustomPainter {
-  final double borderRadius;
-
-  const _RainbowRingPainter({required this.borderRadius});
-
-  static const double _strokeWidth = 1.5;
-
-  // The pill is wide and short, so its ring is dominated by the left and
-  // right arcs (top/bottom are compressed). A single pass around the wheel
-  // put unrelated hues opposite each other -- mint on the right, lavender/
-  // pink on the left -- reading as a hard two-tone split instead of a blend.
-  // Repeating the same 5-hue cycle twice around the sweep gives it 2-fold
-  // symmetry (same color at 0° and 180°), so left and right always show a
-  // matching progression, while keeping the full pastel palette. Alpha
-  // ~50% so the sheen blends into the capsule instead of reading as a
-  // solid rainbow ring.
-  static const _colors = [
-    Color(0x80BFF0DC), // mint
-    Color(0x80C6E3F7), // pale blue
-    Color(0x80D9CCF5), // lavender
-    Color(0x80F7CCE3), // pink
-    Color(0x80FAE3C2), // peach
-    Color(0x80BFF0DC), // mint (halfway repeat)
-    Color(0x80C6E3F7), // pale blue
-    Color(0x80D9CCF5), // lavender
-    Color(0x80F7CCE3), // pink
-    Color(0x80FAE3C2), // peach
-    Color(0x80BFF0DC), // wrap back to mint
-  ];
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    final rect = Offset.zero & size;
-    final rrect = RRect.fromRectAndRadius(
-      rect.deflate(_strokeWidth / 2),
-      Radius.circular(borderRadius),
-    );
-
-    // Soft pastel rim, blurred like a soap-bubble edge instead of a hard line.
-    final ringPaint = Paint()
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = _strokeWidth
-      ..shader = const SweepGradient(colors: _colors).createShader(rect)
-      ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 1.0);
-    canvas.drawRRect(rrect, ringPaint);
-
-    // Glossy specular highlight, like the bright spot on a glass sphere.
-    final highlightPaint = Paint()
-      ..shader =
-          RadialGradient(
-            colors: [
-              Colors.white.withValues(alpha: 0.5),
-              Colors.white.withValues(alpha: 0.0),
-            ],
-          ).createShader(
-            Rect.fromCircle(
-              center: Offset(size.width * 0.28, size.height * 0.22),
-              radius: size.shortestSide * 0.35,
-            ),
-          );
-    canvas.drawRRect(rrect, highlightPaint);
-  }
-
-  @override
-  bool shouldRepaint(covariant _RainbowRingPainter oldDelegate) =>
-      oldDelegate.borderRadius != borderRadius;
-}
-
-class _LiquidGlassNavBarState extends State<LiquidGlassNavBar>
-    with SingleTickerProviderStateMixin {
-  // Vertical squash for the held bubble: 0 = neutral, 1 = max squish. Tracks
-  // the *magnitude* of horizontal drag movement continuously (direction-
-  // independent, so it looks the same sliding either way — no rotation/skew
-  // at all). Once the finger pauses, it springs back to neutral via
-  // easeOutBack, which overshoots slightly past 1.0 before settling for a
-  // natural bounce feel.
-  late final AnimationController _bounceCtrl = AnimationController(
-    vsync: this,
-    duration: const Duration(milliseconds: 90),
-    value: 0.0,
-  );
-  Timer? _bounceDecayTimer;
-
+/// The base lens stays fixed. Only a lightweight analytic backdrop filter follows
+/// the selection: no LiquidGlass shape animation, geometry bitmap or readback.
+class _LiquidGlassNavBarState extends State<LiquidGlassNavBar> {
   int? _dragIndex;
   double? _dragX;
 
-  @override
-  void dispose() {
-    _bounceCtrl.dispose();
-    _bounceDecayTimer?.cancel();
-    super.dispose();
-  }
-
   int _indexFromX(double x, double itemWidth) =>
       (x / itemWidth).floor().clamp(0, widget.items.length - 1);
+
+  void _finishDrag({bool commit = true}) {
+    if (commit && _dragIndex != null) widget.onTap(_dragIndex!);
+    setState(() {
+      _dragIndex = null;
+      _dragX = null;
+    });
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -345,448 +248,199 @@ class _LiquidGlassNavBarState extends State<LiquidGlassNavBar>
         insets: widget.insets,
       );
     }
-
-    final bottomPadding = MediaQuery.of(context).padding.bottom;
-    final screenWidth = MediaQuery.of(context).size.width;
-    final horizontalMargin = screenWidth < 360
-        ? widget.insets / 2
-        : widget.insets;
-    final activeColor =
-        widget.activeColor ?? Theme.of(context).colorScheme.primary;
-    final inactiveColor =
+    final media = MediaQuery.of(context);
+    final dark = Theme.of(context).brightness == Brightness.dark;
+    final active = widget.activeColor ?? Theme.of(context).colorScheme.primary;
+    final selectedInk = dark
+        ? const Color(0xFFF5FCFF)
+        : Color.lerp(active, Colors.black, .20)!;
+    final inactive =
         widget.inactiveColor ?? Theme.of(context).colorScheme.onSurface;
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    final selectedInk = widget.clearGlass
-        ? Color.lerp(
-            activeColor,
-            isDark ? Colors.white : Colors.black,
-            isDark ? .22 : .16,
-          )!
-        : activeColor;
+    final margin = media.size.width < 360 ? widget.insets / 2 : widget.insets;
+    final width = math.min(
+      media.size.width - margin * 2,
+      widget.maxWidth ?? double.infinity,
+    );
+    final itemWidth = width / widget.items.length;
+    final dragging = _dragIndex != null;
+    final index = _dragIndex ?? widget.selectedIndex;
+    final bubbleWidth = itemWidth + (dragging ? 18 : -4);
+    final bubbleHeight = widget.height + (dragging ? 12 : -8);
+    final center = dragging
+        ? _dragX!.clamp(itemWidth / 2 - 3, width - itemWidth / 2 + 3)
+        : itemWidth * (index + .5);
+    final target = Rect.fromCenter(
+      center: Offset(center, widget.height / 2),
+      width: bubbleWidth,
+      height: bubbleHeight,
+    );
+    final duration = Duration(
+      milliseconds: widget.reduceMotion
+          ? 0
+          : dragging
+          ? 65
+          : 260,
+    );
     final inkShadows = [
       Shadow(
-        color: isDark ? const Color(0xF2000000) : const Color(0xF2FFFFFF),
-        blurRadius: 0.8,
+        color: dark ? const Color(0xDD000000) : const Color(0xE6FFFFFF),
+        blurRadius: 1.2,
       ),
     ];
-    // Compact centered capsule: cap at maxWidth (Pronto-style floating pill)
-    // while never exceeding the screen minus the side insets.
-    final availableWidth = screenWidth - horizontalMargin * 2;
-    final barWidth = widget.maxWidth == null
-        ? availableWidth
-        : math.min<double>(availableWidth, widget.maxWidth!);
-
     return Positioned(
-      left: horizontalMargin,
-      right: horizontalMargin,
-      bottom: bottomPadding + widget.insets,
+      left: margin,
+      right: margin,
+      bottom: media.padding.bottom + widget.insets,
       child: Align(
         alignment: Alignment.bottomCenter,
         child: SizedBox(
-          width: barWidth,
-          child: Container(
-            clipBehavior: Clip.antiAlias,
-            decoration: ShapeDecoration(
-              shape: LiquidRoundedRectangle(borderRadius: widget.borderRadius),
-              shadows: widget.clearGlass
-                  ? const []
-                  : [
-                      BoxShadow(
-                        color: Colors.black.withValues(alpha: 0.08),
-                        blurRadius: 0,
-                        spreadRadius: 1,
-                      ),
-                      BoxShadow(
-                        // 抬升投影：胶囊悬浮感（对齐大狗记 Pronto 的柔和深影）
-                        color: Colors.black.withValues(alpha: 0.20),
-                        blurRadius: 26,
-                        offset: const Offset(0, 10),
-                      ),
-                    ],
-            ),
-            child: Stack(
-              clipBehavior: Clip.none,
-              children: [
-                Positioned.fill(
-                  child: Container(
-                    foregroundDecoration: ShapeDecoration(
-                      shape: LiquidRoundedRectangle(
-                        borderRadius: widget.borderRadius,
-                        side: BorderSide(
-                          // 白色亮边定义胶囊轮廓：深色模式下 0.08 几乎不可见
-                          // （质感发闷），提至 0.20 让玻璃边缘清晰「立起来」；
-                          // 浅色模式维持强白边（mirrors iOS behaviour）。
-                          color: isDark
-                              ? Colors.white.withValues(alpha: 0.20)
-                              : Colors.white.withValues(alpha: 0.55),
-                          width: 1.0,
+          width: width,
+          height: widget.height,
+          child: Listener(
+            onPointerCancel: (_) => _finishDrag(commit: false),
+            child: GestureDetector(
+              behavior: HitTestBehavior.opaque,
+              onTapUp: (d) =>
+                  widget.onTap(_indexFromX(d.localPosition.dx, itemWidth)),
+              onHorizontalDragStart: (d) => setState(() {
+                _dragX = d.localPosition.dx;
+                _dragIndex = _indexFromX(_dragX!, itemWidth);
+              }),
+              onHorizontalDragUpdate: (d) => setState(() {
+                _dragX = d.localPosition.dx;
+                _dragIndex = _indexFromX(_dragX!, itemWidth);
+              }),
+              onHorizontalDragEnd: (_) => _finishDrag(),
+              onHorizontalDragCancel: () => _finishDrag(commit: false),
+              child: Stack(
+                clipBehavior: Clip.none,
+                children: [
+                  Positioned.fill(
+                    child: ClipRRect(
+                      borderRadius: BorderRadius.circular(widget.borderRadius),
+                      child: widget.clearGlass
+                          ? const ClearGlassCapsule()
+                          : LiquidGlass.withOwnLayer(
+                              shape: LiquidRoundedRectangle(
+                                borderRadius: widget.borderRadius,
+                              ),
+                              settings: LiquidGlassSettings(
+                                glassColor: Colors.white.withValues(
+                                  alpha: dark ? .10 : .42,
+                                ),
+                                thickness: 20,
+                                refractiveIndex: 1.16,
+                                chromaticAberration: .004,
+                                blur: 12,
+                                saturation: 1.04,
+                                lightIntensity: .9,
+                                ambientStrength: .07,
+                              ),
+                              child: const SizedBox.expand(),
+                            ),
+                    ),
+                  ),
+                  // One continuous rim; no square shadow/filter bounds outside it.
+                  Positioned.fill(
+                    child: IgnorePointer(
+                      child: DecoratedBox(
+                        decoration: BoxDecoration(
+                          borderRadius: BorderRadius.circular(
+                            widget.borderRadius,
+                          ),
+                          border: Border.all(
+                            color: Colors.white.withValues(
+                              alpha: dark ? .25 : .65,
+                            ),
+                            width: .7,
+                          ),
                         ),
                       ),
                     ),
-                    child: widget.clearGlass
-                        ? const ClearGlassCapsule()
-                        : LiquidGlass.withOwnLayer(
-                            shape: LiquidRoundedRectangle(
-                              borderRadius: widget.borderRadius,
-                            ),
-                            settings: LiquidGlassSettings(
-                              // 深色模式：白染 0.04 几乎无玻璃感、highlight 几乎熄灭，
-                              // 胶囊像一块闷黑污渍；提亮染色 / 高光 / 环境光，配合
-                              // 亮边与投影，达到大狗记 Pronto 那种通透「浮起」的质感。
-                              // Light mode: high white tint for vibrancy, blur kept at 1
-                              // so the capsule reads as clean white without any fogging.
-                              glassColor: isDark
-                                  ? Colors.white.withValues(
-                                      alpha: widget.clearGlass ? 0.0 : 0.10,
-                                    )
-                                  : Colors.white.withValues(
-                                      alpha: widget.clearGlass ? 0.0 : 0.42,
-                                    ),
-                              thickness: widget.clearGlass ? 24 : 20,
-                              refractiveIndex: widget.clearGlass ? 1.45 : 1.16,
-                              chromaticAberration: 0.004,
-                              blur: widget.clearGlass ? 0 : 12,
-                              saturation: 1.04,
-                              lightIntensity: isDark ? 0.85 : 0.95,
-                              ambientStrength: isDark ? 0.08 : 0.06,
-                            ),
-                            child: const SizedBox.expand(),
-                          ),
                   ),
-                ),
-                SizedBox(
-                  height: widget.height,
-                  child: LayoutBuilder(
-                    builder: (context, constraints) {
-                      final itemWidth =
-                          constraints.maxWidth / widget.items.length;
-                      final displayIndex = _dragIndex ?? widget.selectedIndex;
-                      final isDragging = _dragIndex != null;
-
-                      return GestureDetector(
-                        behavior: HitTestBehavior.opaque,
-                        onTapUp: (details) {
-                          widget.onTap(
-                            _indexFromX(details.localPosition.dx, itemWidth),
-                          );
-                        },
-                        onHorizontalDragStart: (details) {
-                          final x = details.localPosition.dx;
-                          final index = _indexFromX(x, itemWidth);
-                          setState(() {
-                            _dragIndex = index;
-                            _dragX = x;
-                          });
-                        },
-                        onHorizontalDragUpdate: (details) {
-                          final x = details.localPosition.dx;
-                          final index = _indexFromX(x, itemWidth);
-                          setState(() {
-                            _dragIndex = index;
-                            _dragX = x;
-                          });
-
-                          // Direction-independent: only how far the finger moved
-                          // this frame drives the squish, so it bounces the same
-                          // regardless of which way you slide.
-                          final targetSquish = (details.delta.dx.abs() / 6.0)
-                              .clamp(0.0, 1.0);
-                          _bounceCtrl.animateTo(
-                            targetSquish,
-                            duration: const Duration(milliseconds: 90),
-                            curve: Curves.easeOut,
-                          );
-
-                          // Spring back to neutral once the finger settles.
-                          _bounceDecayTimer?.cancel();
-                          _bounceDecayTimer = Timer(
-                            const Duration(milliseconds: 80),
-                            () {
-                              if (mounted) {
-                                _bounceCtrl.animateTo(
-                                  0.0,
-                                  duration: const Duration(milliseconds: 260),
-                                  curve: Curves.easeOutBack,
-                                );
-                              }
-                            },
-                          );
-                        },
-                        onHorizontalDragEnd: (_) {
-                          if (_dragIndex != null) widget.onTap(_dragIndex!);
-                          setState(() {
-                            _dragIndex = null;
-                            _dragX = null;
-                          });
-                          _bounceDecayTimer?.cancel();
-                          _bounceCtrl.animateTo(
-                            0.0,
-                            duration: const Duration(milliseconds: 260),
-                            curve: Curves.easeOutBack,
-                          );
-                        },
-                        onHorizontalDragCancel: () {
-                          setState(() {
-                            _dragIndex = null;
-                            _dragX = null;
-                          });
-                          _bounceDecayTimer?.cancel();
-                          _bounceCtrl.animateTo(
-                            0.0,
-                            duration: const Duration(milliseconds: 260),
-                            curve: Curves.easeOutBack,
-                          );
-                        },
-                        child: Stack(
-                          clipBehavior: Clip.none,
-                          children: [
-                            Builder(
-                              builder: (context) {
-                                // Normal state: Original stadium pill capsule
-                                final normalWidth = itemWidth - 8;
-                                final normalHeight =
-                                    widget.height -
-                                    10.0; // Fills most of the capsule
-                                final normalTop =
-                                    (widget.height - normalHeight) / 2;
-                                final normalLeft =
-                                    displayIndex * itemWidth + 4.0;
-
-                                // Held state: Enlarged capsule (maintains horizontal pill shape)
-                                final heldWidth = itemWidth + 16.0;
-                                final heldHeight =
-                                    widget.height +
-                                    12.0; // Overlaps top and bottom of the bar
-                                final heldTop =
-                                    (widget.height - heldHeight) / 2;
-
-                                // Track exact finger position clamped within the bar bounds
-                                final exactCenterX =
-                                    _dragX?.clamp(0.0, constraints.maxWidth) ??
-                                    (displayIndex * itemWidth + itemWidth / 2);
-                                final heldLeft = exactCenterX - (heldWidth / 2);
-
-                                return AnimatedPositioned(
-                                  duration: Duration(
-                                    // Shorter duration for position changes when dragging so it tightly tracks the finger
-                                    milliseconds: widget.reduceMotion
-                                        ? 0
-                                        : isDragging
-                                        ? 50
-                                        : 200,
-                                  ),
-                                  curve: isDragging
-                                      ? Curves.easeOut
-                                      : Curves.easeOutCubic,
-                                  left: isDragging ? heldLeft : normalLeft,
-                                  width: isDragging ? heldWidth : normalWidth,
-                                  top: isDragging ? heldTop : normalTop,
-                                  height: isDragging
-                                      ? heldHeight
-                                      : normalHeight,
-                                  child: AnimatedBuilder(
-                                    animation: _bounceCtrl,
-                                    builder: (context, child) {
-                                      final scaleY =
-                                          1.0 - _bounceCtrl.value * 0.12;
-                                      return Transform(
-                                        alignment: Alignment.center,
-                                        transform: Matrix4.diagonal3Values(
-                                          1.0,
-                                          scaleY,
-                                          1.0,
-                                        ),
-                                        child: child,
-                                      );
-                                    },
-                                    child: Stack(
-                                      clipBehavior: Clip.none,
-                                      children: [
-                                        if (widget.liquidActiveBubble &&
-                                            isDragging)
-                                          // Real glass shape, only while held — its position/size
-                                          // animate every drag frame, so the shader recomputes
-                                          // every one of those frames. See the doc comment on
-                                          // [LiquidGlassNavBar.liquidActiveBubble]. The resting
-                                          // (non-dragging) active bubble always stays the plain
-                                          // tinted container below.
-                                          LiquidGlass.withOwnLayer(
-                                            shape: LiquidRoundedRectangle(
-                                              borderRadius: widget.borderRadius,
-                                            ),
-                                            settings: LiquidGlassSettings(
-                                              glassColor: Colors.transparent,
-                                              thickness: widget.clearGlass
-                                                  ? 14
-                                                  : 20,
-                                              refractiveIndex: 1.16,
-                                              chromaticAberration: 0.004,
-                                              blur: widget.clearGlass
-                                                  ? 2.5
-                                                  : 12,
-                                              saturation: 1.16,
-                                              // 拖动中的气泡与静止胶囊同款提亮
-                                              lightIntensity: isDark
-                                                  ? 0.85
-                                                  : 0.95,
-                                              ambientStrength: isDark
-                                                  ? 0.32
-                                                  : 0.2,
-                                            ),
-                                            child: const SizedBox.expand(),
-                                          )
-                                        else
-                                          AnimatedContainer(
-                                            duration: Duration(
-                                              milliseconds: widget.reduceMotion
-                                                  ? 0
-                                                  : isDragging
-                                                  ? 150
-                                                  : 200,
-                                            ),
-                                            curve: isDragging
-                                                ? Curves.easeOut
-                                                : Curves.easeOutCubic,
-                                            decoration: BoxDecoration(
-                                              // No tint while held — the light gray stroke (or the
-                                              // rainbow sheen, if opted into) is the only drag-state
-                                              // accent.
-                                              color: isDragging
-                                                  ? Colors.transparent
-                                                  : widget.clearGlass
-                                                  ? (isDark
-                                                        ? const Color(
-                                                            0xE6272B31,
-                                                          )
-                                                        : const Color(
-                                                            0xEDFFFFFF,
-                                                          ))
-                                                  : (isDark
-                                                        // 激活气泡略提亮：与大狗记一致，
-                                                        // 选中态在胶囊里清晰可辨
-                                                        ? Colors.white
-                                                              .withValues(
-                                                                alpha: 0.12,
-                                                              )
-                                                        : activeColor
-                                                              .withValues(
-                                                                alpha: 0.15,
-                                                              )),
-                                              borderRadius:
-                                                  BorderRadius.circular(
-                                                    widget.clearGlass
-                                                        ? 16
-                                                        : widget.borderRadius,
-                                                  ),
-                                            ),
-                                          ),
-                                        // Stroke overlay lives outside the bubble-content branch
-                                        // above so it shows the same way whether the bubble itself
-                                        // is the real LiquidGlass shape or the plain tinted
-                                        // container.
-                                        if (isDragging &&
-                                            !widget.dragRainbowBorder)
-                                          Positioned.fill(
-                                            child: IgnorePointer(
-                                              child: DecoratedBox(
-                                                decoration: BoxDecoration(
-                                                  borderRadius:
-                                                      BorderRadius.circular(
-                                                        widget.borderRadius,
-                                                      ),
-                                                  border: Border.all(
-                                                    color: Colors.grey.shade500
-                                                        .withValues(
-                                                          alpha: 0.55,
-                                                        ),
-                                                    width: 1.5,
-                                                  ),
-                                                ),
-                                              ),
-                                            ),
-                                          ),
-                                        if (isDragging &&
-                                            widget.dragRainbowBorder)
-                                          Positioned.fill(
-                                            child: IgnorePointer(
-                                              child: CustomPaint(
-                                                painter: _RainbowRingPainter(
-                                                  borderRadius:
-                                                      widget.borderRadius,
-                                                ),
-                                              ),
-                                            ),
-                                          ),
-                                      ],
+                  TweenAnimationBuilder<Rect?>(
+                    tween: RectTween(end: target),
+                    duration: duration,
+                    curve: Curves.easeOutCubic,
+                    builder: (context, rect, _) => Positioned.fromRect(
+                      rect: rect!,
+                      child: IgnorePointer(
+                        child: ClearGlassCapsule(
+                          key: const ValueKey('nav-selection-lens'),
+                          tint: active.withValues(alpha: dark ? .32 : .23),
+                          bubble: true,
+                          held: ((rect.height - (widget.height - 8)) / 20)
+                              .clamp(0, 1),
+                        ),
+                      ),
+                    ),
+                  ),
+                  Row(
+                    children: List.generate(widget.items.length, (i) {
+                      final item = widget.items[i];
+                      final selected = index == i;
+                      final color = selected
+                          ? selectedInk
+                          : inactive.withValues(alpha: dark ? .68 : .64);
+                      return Semantics(
+                        selected: selected,
+                        button: true,
+                        excludeSemantics: true,
+                        label: item.label,
+                        child: SizedBox(
+                          width: itemWidth,
+                          height: widget.height,
+                          child: AnimatedScale(
+                            scale: selected && dragging && !widget.reduceMotion
+                                ? 1.08
+                                : 1,
+                            duration: duration,
+                            curve: Curves.easeOutCubic,
+                            child: Column(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                _iconWithBadge(
+                                  context,
+                                  item,
+                                  IconTheme(
+                                    data: IconThemeData(
+                                      color: color,
+                                      size: widget.iconSize,
+                                      shadows: inkShadows,
                                     ),
-                                  ),
-                                );
-                              },
-                            ),
-                            Row(
-                              children: List.generate(widget.items.length, (
-                                index,
-                              ) {
-                                final item = widget.items[index];
-                                final bool isActive = index == displayIndex;
-                                final color = isActive
-                                    ? selectedInk
-                                    : inactiveColor;
-                                return SizedBox(
-                                  width: itemWidth,
-                                  height: widget.height,
-                                  child: Column(
-                                    mainAxisAlignment: MainAxisAlignment.center,
-                                    children: [
-                                      _iconWithBadge(
-                                        context,
-                                        item,
-                                        IconTheme(
-                                          data: IconThemeData(
-                                            color: color,
-                                            size: widget.iconSize,
-                                            shadows: inkShadows,
-                                          ),
-                                          child:
-                                              item.iconWidget ??
-                                              Icon(
-                                                item.icon,
-                                                size: widget.iconSize,
-                                                color: color,
-                                              ),
+                                    child:
+                                        item.iconWidget ??
+                                        Icon(
+                                          item.icon,
+                                          size: widget.iconSize,
+                                          color: color,
                                         ),
-                                      ),
-                                      const SizedBox(height: 2),
-                                      Text(
-                                        item.label,
-                                        maxLines: 1,
-                                        overflow: TextOverflow.ellipsis,
-                                        style: Theme.of(context)
-                                            .textTheme
-                                            .bodySmall
-                                            ?.merge(widget.labelStyle)
-                                            .copyWith(
-                                              color: color,
-                                              shadows: inkShadows,
-                                              fontWeight:
-                                                  widget
-                                                      .labelStyle
-                                                      ?.fontWeight ??
-                                                  FontWeight.w500,
-                                            ),
-                                      ),
-                                    ],
                                   ),
-                                );
-                              }),
+                                ),
+                                const SizedBox(height: 2),
+                                Text(
+                                  item.label,
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: Theme.of(context).textTheme.bodySmall
+                                      ?.merge(widget.labelStyle)
+                                      .copyWith(
+                                        color: color,
+                                        shadows: inkShadows,
+                                        fontWeight: selected
+                                            ? FontWeight.w800
+                                            : FontWeight.w500,
+                                      ),
+                                ),
+                              ],
                             ),
-                          ],
+                          ),
                         ),
                       );
-                    },
+                    }),
                   ),
-                ),
-              ],
+                ],
+              ),
             ),
           ),
         ),

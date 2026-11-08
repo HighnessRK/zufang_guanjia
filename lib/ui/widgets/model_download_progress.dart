@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_miuix/miuix.dart';
+import 'app_palette.dart';
 
 /// Overall bytes for the model and projector; transport segments stay secondary.
 class ModelDownloadProgress extends StatelessWidget {
@@ -21,6 +22,7 @@ class ModelDownloadProgress extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final c = MiuixTheme.of(context).colors;
+    final palette = AppPalette.of(context);
     final progress = total > 0 ? (received / total).clamp(0.0, 1.0) : 0.0;
     final percent =
         total > 0 ? '${(progress * 100).toStringAsFixed(1)}%' : '准备中';
@@ -45,7 +47,11 @@ class ModelDownloadProgress extends StatelessWidget {
                       color: c.primary.withValues(alpha: 0.10),
                       child: TweenAnimationBuilder<double>(
                           tween: Tween(end: progress),
-                          duration: const Duration(milliseconds: 180),
+                          duration: Duration(
+                              milliseconds:
+                                  MediaQuery.disableAnimationsOf(context)
+                                      ? 0
+                                      : 180),
                           curve: Curves.easeOut,
                           builder: (_, value, __) => Align(
                               alignment: Alignment.centerLeft,
@@ -55,10 +61,7 @@ class ModelDownloadProgress extends StatelessWidget {
                                       decoration: BoxDecoration(
                                           borderRadius:
                                               BorderRadius.circular(6),
-                                          gradient: LinearGradient(colors: [
-                                            c.primary.withValues(alpha: 0.65),
-                                            c.primary
-                                          ])),
+                                          gradient: palette.gradient),
                                       child: const SizedBox.expand()))))))),
           const SizedBox(height: 10),
           MiuixText(

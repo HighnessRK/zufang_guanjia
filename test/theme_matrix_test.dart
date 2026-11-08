@@ -15,6 +15,13 @@ import 'package:zufang_guanjia/ui/rooms/collect_panel_page.dart';
 import 'package:zufang_guanjia/ui/meter/meter_page.dart';
 import 'package:zufang_guanjia/ui/settings/settings_page.dart';
 import 'package:zufang_guanjia/ui/settings/appearance_settings_page.dart';
+import 'package:zufang_guanjia/ui/settings/billing_settings_page.dart';
+import 'package:zufang_guanjia/ui/settings/notify_settings_page.dart';
+import 'package:zufang_guanjia/ui/settings/about_page.dart';
+import 'package:zufang_guanjia/ui/settings/data_settings_page.dart';
+import 'package:zufang_guanjia/ui/settings/update_settings_page.dart';
+import 'package:zufang_guanjia/ui/settings/lab_page.dart';
+import 'package:zufang_guanjia/ui/settings/excluded_rooms_page.dart';
 import 'package:zufang_guanjia/ui/settings/llm_settings_page.dart';
 import 'package:zufang_guanjia/ui/settings/mcp_settings_page.dart';
 import 'package:zufang_guanjia/ui/settings/feishu_settings_page.dart';
@@ -24,7 +31,7 @@ import 'package:zufang_guanjia/ui/receipt/receipt_list_page.dart';
 import 'package:zufang_guanjia/ui/shell/app_shell.dart';
 
 void main() {
-  testWidgets('十二页面 × 深浅主题 × 五种背景，125% 字体渲染检查', (tester) async {
+  testWidgets('十九页面 × 深浅主题 × 五种背景，125% 字体渲染检查', (tester) async {
     sqfliteFfiInit();
     databaseFactory = databaseFactoryFfi;
     TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
@@ -76,7 +83,14 @@ void main() {
       FeishuSettingsPage(),
       FeeReportPage(),
       StatPage(),
-      ReceiptListPage()
+      ReceiptListPage(),
+      BillingSettingsPage(),
+      NotifySettingsPage(),
+      AboutPage(),
+      DataSettingsPage(),
+      UpdateSettingsPage(),
+      LabPage(),
+      ExcludedRoomsPage()
     ];
     for (final mode in [
       MiuixColorSchemeMode.light,

@@ -69,8 +69,9 @@ void main() {
         expect(pixel(point.dx.toInt(), point.dy.toInt()), backdrop,
             reason: '$mode / corner $point');
       }
+      final continuousPane = pixel(35 + 64 + 32, 774);
       for (var item = 1; item < 5; item++) {
-        expect(pixel(35 + item * 64 + 32, 774), backdrop,
+        expect(pixel(35 + item * 64 + 32, 774), continuousPane,
             reason: '$mode / inactive $item');
       }
       image!.dispose();

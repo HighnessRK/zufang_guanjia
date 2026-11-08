@@ -130,7 +130,7 @@ class _AppearanceSettingsPageState extends State<AppearanceSettingsPage> {
                         MiuixSwitchPreference(
                             title: '全透玻璃',
                             summary:
-                                cfg.clearGlass ? '无雾化 · 曲面折射' : '柔和磨砂 · 更强遮蔽',
+                                cfg.clearGlass ? '通透折射 · 清晰导航' : '柔和磨砂 · 更强遮蔽',
                             value: cfg.clearGlass,
                             onChanged: (v) async {
                               cfg.clearGlass = v;

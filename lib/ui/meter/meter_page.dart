@@ -582,7 +582,7 @@ class _MeterPageState extends State<MeterPage> {
                   icon: Icons.photo_camera_rounded,
                   label: 'AI拍电表',
                   busy: _roomsOf(floor).any((r) => _tasks.busy(r.roomNo)),
-                  colors: const <Color>[Color(0xFF3482FF), Color(0xFF7B5CFF)],
+                  colors: AppPalette.of(context).actions,
                   onTap: () => _captureFloorElec(floor),
                 ),
               ),
@@ -964,16 +964,16 @@ class _MeterPageState extends State<MeterPage> {
     return GestureDetector(
       onTap: busy ? null : onTap,
       child: busy
-          ? const SizedBox(
+          ? SizedBox(
               width: 16,
               height: 16,
               child: CircularProgressIndicator(
                 strokeWidth: 2,
-                color: Color(0xFF3482FF),
+                color: MiuixTheme.of(context).colors.primary,
               ),
             )
-          : const Icon(Icons.photo_camera_rounded,
-              size: 19, color: Color(0xFF3482FF)),
+          : Icon(Icons.photo_camera_rounded,
+              size: 19, color: MiuixTheme.of(context).colors.primary),
     );
   }
 }

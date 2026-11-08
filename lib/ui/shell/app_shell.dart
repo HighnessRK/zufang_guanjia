@@ -15,6 +15,7 @@ import '../rooms/rooms_page.dart';
 import '../settings/settings_page.dart';
 import '../transitions.dart';
 import '../widgets/update_dialog.dart';
+import '../widgets/app_palette.dart';
 
 /// 全局外壳：承载 5 个核心页面 + AndroidLiquidGlass 液态玻璃磨砂底部导航。
 ///
@@ -247,7 +248,7 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
                     borderRadius: 30,
                     labelStyle: const TextStyle(
                         fontSize: 10.5, fontWeight: FontWeight.w600),
-                    activeColor: c.primary,
+                    activeColor: AppPalette.of(context).accent(context),
                     inactiveColor: c.onSurface,
                   ),
               ],

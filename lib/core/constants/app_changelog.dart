@@ -31,6 +31,16 @@ class AppChangelog {
 
   /// 全部版本（倒序：最新在最前）
   static const List<ChangelogVersion> versions = <ChangelogVersion>[
+    ChangelogVersion('1.2.9', '2026-11-08', <ChangelogEntry>[
+      ChangelogEntry('优化', '底部导航结合曲面折射、背景柔化与连续高光，改善玻璃质感和文字可读性'),
+      ChangelogEntry('优化', '选中滑块使用主题色凸面玻璃，取消硬描边；拖动时轻盈抬起、放大并跟手折射'),
+      ChangelogEntry('优化', '主按钮、进度条和选中颜色随背景光效即时切换，统一深浅主题配色'),
+      ChangelogEntry('修复', '补齐设置中心数据管理与飞书多维表格之间的分割线'),
+      ChangelogEntry('优化', '二级选择器和确认弹窗统一使用玻璃面板，背景光效自然透入'),
+      ChangelogEntry('修复', '深色模式下选择弹窗标题使用清晰的前景色，避免标题消失'),
+      ChangelogEntry('修复', '取消导航拖动时保留当前页面，避免手势中断后误切页'),
+      ChangelogEntry('优化', '统一首页、收据和识别入口的装饰配色，减少重复模糊绘制'),
+    ]),
     ChangelogVersion('1.2.8', '2026-11-06', <ChangelogEntry>[
       ChangelogEntry('修复', '底部导航统一裁切到胶囊轮廓，消除四角虚影和选项背后的球状光晕'),
       ChangelogEntry('优化', '玻璃折射集中在外缘，保留清晰选项与一整片连续反光'),
